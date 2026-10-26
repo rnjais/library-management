@@ -1,0 +1,34 @@
+# Build and dependency artifacts
+target/
+*.class
+
+# Maven wrapper and caches
+.mvn/
+mvnw
+mvnw.cmd
+
+# Version control
+.git/
+.gitignore
+
+# IDE and editor files
+.idea/
+*.iml
+.vscode/
+.settings/
+.classpath
+.project
+
+# Environment and sensitive credential files
+.env
+*.env
+*.local
+
+# Logs and scratch files
+logs/
+*.log
+scratch/
+
+# Operating system files
+.DS_Store
+Thumbs.db

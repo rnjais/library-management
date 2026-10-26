@@ -1,0 +1,60 @@
+services:
+  # ============================================================================
+  # MySQL 8.0 Database Service
+  # ============================================================================
+  mysql:
+    image: mysql:8.0
+    container_name: library-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-library_management_db}
+      MYSQL_USER: ${MYSQL_USER:-library_user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-library_password}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_password}
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p$${MYSQL_ROOT_PASSWORD} || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - library-network
+
+  # ============================================================================
+  # Spring Boot Application Service
+  # ============================================================================
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: library-app
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-library_management_db}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      SPRING_DATASOURCE_USERNAME: ${MYSQL_USER:-library_user}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD:-library_password}
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dGhpcy1pcy1hLXNhZmUtZGV2ZWxvcG1lbnQtdGVzdC1qd3Qtc2VjcmV0LWtleS0yNTYtYml0cw==}
+      JWT_EXPIRATION_MS: ${JWT_EXPIRATION_MS:-86400000}
+      APP_MAIL_ENABLED: ${APP_MAIL_ENABLED:-false}
+      SMTP_HOST: ${SMTP_HOST:-localhost}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    networks:
+      - library-network
+
+volumes:
+  mysql_data:
+    name: library_mysql_data
+
+networks:
+  library-network:
+    name: library_network
