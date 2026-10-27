@@ -97,6 +97,16 @@ const memberService = {
     const response = await api.patch(`/members/${id}/deactivate`)
     return response.data
   },
+
+  /**
+   * Permanently deletes a member and cleans up their account. Requires ADMIN role.
+   * @param {number|string} id - Member ID
+   * @returns {Promise<ApiResponse<null>>}
+   */
+  async deleteMember(id) {
+    const response = await api.delete(`/members/${id}`)
+    return response.data
+  },
 }
 
 export default memberService

@@ -262,4 +262,28 @@ class MemberControllerTest {
                 .andExpect(jsonPath("$.status").value(400))
                 .andExpect(jsonPath("$.message").value("Page index cannot be negative"));
     }
+
+    @Test
+    void shouldDeleteMemberSuccessfully() throws Exception {
+        doNothing().when(memberService).deleteMember(1L);
+
+        mockMvc.perform(delete("/api/members/1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.message").value("Member deleted successfully"));
+
+        verify(memberService, times(1)).deleteMember(1L);
+    }
+
+    @Test
+    void shouldReturn404WhenDeletingNonExistentMember() throws Exception {
+        doThrow(new ResourceNotFoundException("Member", "id", 999L))
+                .when(memberService).deleteMember(999L);
+
+        mockMvc.perform(delete("/api/members/999"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.status").value(404));
+
+        verify(memberService, times(1)).deleteMember(999L);
+    }
 }

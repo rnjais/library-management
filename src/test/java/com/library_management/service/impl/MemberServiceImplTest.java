@@ -2,10 +2,17 @@ package com.library_management.service.impl;
 
 import com.library_management.dto.request.MemberRequestDto;
 import com.library_management.dto.response.MemberResponseDto;
+import com.library_management.entity.FineStatus;
 import com.library_management.entity.Member;
+import com.library_management.entity.Role;
+import com.library_management.entity.User;
 import com.library_management.exception.DuplicateResourceException;
 import com.library_management.exception.ResourceNotFoundException;
+import com.library_management.repository.BorrowingReminderRepository;
+import com.library_management.repository.BorrowingRepository;
+import com.library_management.repository.FineRepository;
 import com.library_management.repository.MemberRepository;
+import com.library_management.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -34,6 +41,18 @@ class MemberServiceImplTest {
 
     @Mock
     private MemberRepository memberRepository;
+
+    @Mock
+    private BorrowingRepository borrowingRepository;
+
+    @Mock
+    private FineRepository fineRepository;
+
+    @Mock
+    private BorrowingReminderRepository borrowingReminderRepository;
+
+    @Mock
+    private UserRepository userRepository;
 
     @InjectMocks
     private MemberServiceImpl memberService;
@@ -253,5 +272,64 @@ class MemberServiceImplTest {
         // Act & Assert
         assertThrows(ResourceNotFoundException.class, () -> memberService.deactivateMember(999L));
         verify(memberRepository, never()).save(any(Member.class));
+    }
+
+    @Test
+    @DisplayName("Should successfully delete member and clean up associated user and records")
+    void testDeleteMember_Success() {
+        // Arrange
+        when(memberRepository.findById(1L)).thenReturn(Optional.of(sampleMember));
+        when(borrowingRepository.countByMemberIdAndReturnDateIsNull(1L)).thenReturn(0L);
+        when(fineRepository.countByMemberIdAndStatus(1L, FineStatus.UNPAID)).thenReturn(0L);
+        User sampleUser = User.builder().id(10L).email(sampleMember.getEmail()).role(Role.MEMBER).build();
+        when(userRepository.findByEmail(sampleMember.getEmail())).thenReturn(Optional.of(sampleUser));
+
+        // Act
+        memberService.deleteMember(1L);
+
+        // Assert
+        verify(borrowingReminderRepository, times(1)).deleteByMemberId(1L);
+        verify(fineRepository, times(1)).deleteByMemberId(1L);
+        verify(borrowingRepository, times(1)).deleteByMemberId(1L);
+        verify(memberRepository, times(1)).delete(sampleMember);
+        verify(userRepository, times(1)).delete(sampleUser);
+    }
+
+    @Test
+    @DisplayName("Should throw ResourceNotFoundException when deleting non-existent member")
+    void testDeleteMember_NotFound_ThrowsException() {
+        // Arrange
+        when(memberRepository.findById(999L)).thenReturn(Optional.empty());
+
+        // Act & Assert
+        assertThrows(ResourceNotFoundException.class, () -> memberService.deleteMember(999L));
+        verify(memberRepository, never()).delete(any(Member.class));
+    }
+
+    @Test
+    @DisplayName("Should throw IllegalStateException when deleting member with active book loans")
+    void testDeleteMember_ActiveLoans_ThrowsException() {
+        // Arrange
+        when(memberRepository.findById(1L)).thenReturn(Optional.of(sampleMember));
+        when(borrowingRepository.countByMemberIdAndReturnDateIsNull(1L)).thenReturn(2L);
+
+        // Act & Assert
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> memberService.deleteMember(1L));
+        assertTrue(ex.getMessage().contains("unreturned borrowed book(s)"));
+        verify(memberRepository, never()).delete(any(Member.class));
+    }
+
+    @Test
+    @DisplayName("Should throw IllegalStateException when deleting member with unpaid fines")
+    void testDeleteMember_UnpaidFines_ThrowsException() {
+        // Arrange
+        when(memberRepository.findById(1L)).thenReturn(Optional.of(sampleMember));
+        when(borrowingRepository.countByMemberIdAndReturnDateIsNull(1L)).thenReturn(0L);
+        when(fineRepository.countByMemberIdAndStatus(1L, FineStatus.UNPAID)).thenReturn(1L);
+
+        // Act & Assert
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> memberService.deleteMember(1L));
+        assertTrue(ex.getMessage().contains("unpaid fine(s)"));
+        verify(memberRepository, never()).delete(any(Member.class));
     }
 }

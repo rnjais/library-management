@@ -34,4 +34,13 @@ public interface BorrowingReminderRepository extends JpaRepository<BorrowingRemi
      * @return true if already sent on this date.
      */
     boolean existsByBorrowingIdAndReminderTypeAndSentDate(Long borrowingId, ReminderType reminderType, LocalDate sentDate);
+
+    /**
+     * Deletes all reminder logs for loans associated with a member.
+     *
+     * @param memberId The member ID.
+     */
+    @org.springframework.data.jpa.repository.Modifying
+    @org.springframework.data.jpa.repository.Query("DELETE FROM BorrowingReminder br WHERE br.borrowing.id IN (SELECT b.id FROM Borrowing b WHERE b.member.id = :memberId)")
+    void deleteByMemberId(@org.springframework.data.repository.query.Param("memberId") Long memberId);
 }

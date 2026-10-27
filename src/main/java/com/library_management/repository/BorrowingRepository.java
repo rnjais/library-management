@@ -195,4 +195,13 @@ public interface BorrowingRepository extends JpaRepository<Borrowing, Long> {
     @EntityGraph(attributePaths = {"book", "member"})
     @Query("SELECT b FROM Borrowing b WHERE b.returnDate IS NULL AND b.dueDate < :currentDate")
     List<Borrowing> findActiveOverdueBorrowings(@Param("currentDate") LocalDate currentDate);
+
+    /**
+     * Deletes all borrowing records associated with a member.
+     *
+     * @param memberId The member ID.
+     */
+    @Modifying
+    @Query("DELETE FROM Borrowing b WHERE b.member.id = :memberId")
+    void deleteByMemberId(@Param("memberId") Long memberId);
 }

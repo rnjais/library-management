@@ -2,10 +2,16 @@ package com.library_management.service.impl;
 
 import com.library_management.dto.request.MemberRequestDto;
 import com.library_management.dto.response.MemberResponseDto;
+import com.library_management.entity.FineStatus;
 import com.library_management.entity.Member;
+import com.library_management.entity.Role;
 import com.library_management.exception.DuplicateResourceException;
 import com.library_management.exception.ResourceNotFoundException;
+import com.library_management.repository.BorrowingReminderRepository;
+import com.library_management.repository.BorrowingRepository;
+import com.library_management.repository.FineRepository;
 import com.library_management.repository.MemberRepository;
+import com.library_management.repository.UserRepository;
 import com.library_management.service.MemberService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -22,10 +28,23 @@ import org.springframework.transaction.annotation.Transactional;
 public class MemberServiceImpl implements MemberService {
 
     private final MemberRepository memberRepository;
+    private final BorrowingRepository borrowingRepository;
+    private final FineRepository fineRepository;
+    private final BorrowingReminderRepository borrowingReminderRepository;
+    private final UserRepository userRepository;
 
     // Constructor Injection
-    public MemberServiceImpl(MemberRepository memberRepository) {
+    public MemberServiceImpl(
+            MemberRepository memberRepository,
+            BorrowingRepository borrowingRepository,
+            FineRepository fineRepository,
+            BorrowingReminderRepository borrowingReminderRepository,
+            UserRepository userRepository) {
         this.memberRepository = memberRepository;
+        this.borrowingRepository = borrowingRepository;
+        this.fineRepository = fineRepository;
+        this.borrowingReminderRepository = borrowingReminderRepository;
+        this.userRepository = userRepository;
     }
 
     @Override
@@ -160,5 +179,48 @@ public class MemberServiceImpl implements MemberService {
         Member updatedMember = memberRepository.save(member);
         log.info("Successfully deactivated member with ID: {}", id);
         return MemberResponseDto.fromEntity(updatedMember);
+    }
+
+    @Override
+    @Transactional
+    public void deleteMember(Long id) {
+        log.info("Attempting to delete member with ID: {}", id);
+
+        // 1. Verify member existence
+        Member member = memberRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Member", "id", id));
+
+        // 2. Business Rule: Disallow deletion if member currently has unreturned books
+        long activeBorrowings = borrowingRepository.countByMemberIdAndReturnDateIsNull(id);
+        if (activeBorrowings > 0) {
+            log.warn("Cannot delete member id={}: {} active borrowings remain unreturned", id, activeBorrowings);
+            throw new IllegalStateException("Cannot delete member: Patron currently has " + activeBorrowings
+                    + " unreturned borrowed book(s). Please ensure all books are returned before deleting.");
+        }
+
+        // 3. Business Rule: Disallow deletion if member has unpaid fines
+        long unpaidFines = fineRepository.countByMemberIdAndStatus(id, FineStatus.UNPAID);
+        if (unpaidFines > 0) {
+            log.warn("Cannot delete member id={}: {} unpaid fines remain outstanding", id, unpaidFines);
+            throw new IllegalStateException("Cannot delete member: Patron has " + unpaidFines
+                    + " unpaid fine(s). All outstanding fines must be settled before deleting the member.");
+        }
+
+        // 4. Clean up historical reminder notifications, fines, and borrowing logs for this member
+        borrowingReminderRepository.deleteByMemberId(id);
+        fineRepository.deleteByMemberId(id);
+        borrowingRepository.deleteByMemberId(id);
+
+        // 5. Delete member entity
+        memberRepository.delete(member);
+        log.info("Member entity with ID: {} deleted from database", id);
+
+        // 6. Delete linked user account if exists (and ensure we never delete ADMIN accounts)
+        userRepository.findByEmail(member.getEmail()).ifPresent(user -> {
+            if (user.getRole() != Role.ADMIN) {
+                userRepository.delete(user);
+                log.info("Associated user credentials account deleted for email: {}", member.getEmail());
+            }
+        });
     }
 }

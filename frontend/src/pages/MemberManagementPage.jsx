@@ -28,6 +28,7 @@ import PersonAddIcon from '@mui/icons-material/PersonAdd'
 import EditIcon from '@mui/icons-material/Edit'
 import VisibilityIcon from '@mui/icons-material/Visibility'
 import BlockIcon from '@mui/icons-material/Block'
+import DeleteIcon from '@mui/icons-material/Delete'
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward'
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward'
 import FilterListIcon from '@mui/icons-material/FilterList'
@@ -35,6 +36,7 @@ import memberService from '../services/memberService'
 import MemberFormDialog from '../components/members/MemberFormDialog'
 import MemberDetailDialog from '../components/members/MemberDetailDialog'
 import DeactivateConfirmDialog from '../components/members/DeactivateConfirmDialog'
+import DeleteMemberConfirmDialog from '../components/members/DeleteMemberConfirmDialog'
 import { formatDate } from '../utils/formatters'
 
 const SORT_OPTIONS = [
@@ -70,6 +72,9 @@ const MemberManagementPage = () => {
   const [deactivateOpen, setDeactivateOpen] = useState(false)
   const [selectedMemberForDeactivate, setSelectedMemberForDeactivate] = useState(null)
   const [deactivateLoading, setDeactivateLoading] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [selectedMemberForDelete, setSelectedMemberForDelete] = useState(null)
+  const [deleteLoading, setDeleteLoading] = useState(false)
 
   // Load Members from Backend
   const loadMembers = useCallback(async () => {
@@ -187,10 +192,34 @@ const MemberManagementPage = () => {
       setFeedbackMessage('Member account has been deactivated.')
       loadMembers()
     } catch (err) {
-      setApiError(err.message || 'Failed to deactivate member account.')
+      setApiError(err.response?.data?.message || err.message || 'Failed to deactivate member account.')
       setDeactivateOpen(false)
     } finally {
       setDeactivateLoading(false)
+    }
+  }
+
+  const handleOpenDelete = (member) => {
+    setSelectedMemberForDelete(member)
+    setDeleteOpen(true)
+  }
+
+  const handleConfirmDelete = async () => {
+    if (!selectedMemberForDelete) return
+    setDeleteLoading(true)
+
+    try {
+      await memberService.deleteMember(selectedMemberForDelete.id)
+      const deletedName = selectedMemberForDelete.fullName || `ID #${selectedMemberForDelete.id}`
+      setDeleteOpen(false)
+      setSelectedMemberForDelete(null)
+      setFeedbackMessage(`Member "${deletedName}" has been permanently deleted.`)
+      loadMembers()
+    } catch (err) {
+      setApiError(err.response?.data?.message || err.message || 'Failed to delete member.')
+      setDeleteOpen(false)
+    } finally {
+      setDeleteLoading(false)
     }
   }
 
@@ -462,6 +491,16 @@ const MemberManagementPage = () => {
                           </IconButton>
                         </Tooltip>
                       )}
+
+                      <Tooltip title="Delete Member">
+                        <IconButton
+                          size="small"
+                          color="error"
+                          onClick={() => handleOpenDelete(member)}
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
                     </Stack>
                   </TableCell>
                 </TableRow>
@@ -529,6 +568,14 @@ const MemberManagementPage = () => {
         member={selectedMemberForDeactivate}
         onConfirm={handleConfirmDeactivate}
         loading={deactivateLoading}
+      />
+
+      <DeleteMemberConfirmDialog
+        open={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
+        member={selectedMemberForDelete}
+        onConfirm={handleConfirmDelete}
+        loading={deleteLoading}
       />
     </Box>
   )

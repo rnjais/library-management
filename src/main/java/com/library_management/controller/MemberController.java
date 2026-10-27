@@ -208,6 +208,26 @@ public class MemberController {
     }
 
     /**
+     * DELETE /api/members/{id}
+     * Permanently deletes a member and their account.
+     *
+     * @param id The ID of the member to delete.
+     * @return 200 OK with success message.
+     */
+    @DeleteMapping("/{id}")
+    @Operation(summary = "Delete member", description = "Permanently deletes a member and their account. Fails if member has active borrowings or unpaid fines. Requires ADMIN role.")
+    @ApiResponses(value = {
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Member deleted successfully"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Cannot delete member with active loans or unpaid fines"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Member not found with specified ID")
+    })
+    public ResponseEntity<ApiResponse<Void>> deleteMember(
+            @Parameter(description = "Unique ID of the member to delete") @PathVariable("id") Long id) {
+        memberService.deleteMember(id);
+        return ResponseEntity.ok(ApiResponse.success("Member deleted successfully", null));
+    }
+
+    /**
      * Helper method to validate pagination parameters and construct a Pageable instance.
      */
     private Pageable buildPageable(int page, int size, String sortBy, String direction) {

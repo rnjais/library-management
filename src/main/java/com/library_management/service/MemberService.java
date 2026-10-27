@@ -68,4 +68,12 @@ public interface MemberService {
      * @return The updated MemberResponseDto with active = false.
      */
     MemberResponseDto deactivateMember(Long id);
+
+    /**
+     * Permanently deletes a member and cleans up associated accounts.
+     * Prevents deletion if member has active loans or unpaid fines.
+     *
+     * @param id The ID of the member to delete.
+     */
+    void deleteMember(Long id);
 }
