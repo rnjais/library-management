@@ -48,6 +48,9 @@ class BookServiceImplTest {
     @Mock
     private BorrowingReminderRepository borrowingReminderRepository;
 
+    @Mock
+    private com.library_management.repository.ReservationRepository reservationRepository;
+
     @InjectMocks
     private BookServiceImpl bookService;
 

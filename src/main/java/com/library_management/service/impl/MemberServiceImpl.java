@@ -4,6 +4,7 @@ import com.library_management.dto.request.MemberRequestDto;
 import com.library_management.dto.response.MemberResponseDto;
 import com.library_management.entity.FineStatus;
 import com.library_management.entity.Member;
+import com.library_management.entity.ReservationStatus;
 import com.library_management.entity.Role;
 import com.library_management.entity.User;
 import com.library_management.exception.DuplicateResourceException;
@@ -12,6 +13,7 @@ import com.library_management.repository.BorrowingReminderRepository;
 import com.library_management.repository.BorrowingRepository;
 import com.library_management.repository.FineRepository;
 import com.library_management.repository.MemberRepository;
+import com.library_management.repository.ReservationRepository;
 import com.library_management.repository.UserRepository;
 import com.library_management.service.MemberService;
 import lombok.extern.slf4j.Slf4j;
@@ -20,6 +22,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -35,6 +38,7 @@ public class MemberServiceImpl implements MemberService {
     private final FineRepository fineRepository;
     private final BorrowingReminderRepository borrowingReminderRepository;
     private final UserRepository userRepository;
+    private final ReservationRepository reservationRepository;
 
     // Constructor Injection
     public MemberServiceImpl(
@@ -42,12 +46,14 @@ public class MemberServiceImpl implements MemberService {
             BorrowingRepository borrowingRepository,
             FineRepository fineRepository,
             BorrowingReminderRepository borrowingReminderRepository,
-            UserRepository userRepository) {
+            UserRepository userRepository,
+            ReservationRepository reservationRepository) {
         this.memberRepository = memberRepository;
         this.borrowingRepository = borrowingRepository;
         this.fineRepository = fineRepository;
         this.borrowingReminderRepository = borrowingReminderRepository;
         this.userRepository = userRepository;
+        this.reservationRepository = reservationRepository;
     }
 
     @Override
@@ -273,12 +279,23 @@ public class MemberServiceImpl implements MemberService {
                     + " unpaid fine(s). All outstanding fines must be settled before deleting the member.");
         }
 
-        // 4. Clean up historical reminder notifications, fines, and borrowing logs for this member
+        // 4. Business Rule: Disallow deletion if member has active reservations
+        long activeReservations = reservationRepository.countByMemberIdAndStatusIn(
+                id, List.of(ReservationStatus.PENDING, ReservationStatus.READY_FOR_PICKUP)
+        );
+        if (activeReservations > 0) {
+            log.warn("Cannot delete member id={}: {} active reservation(s) exist", id, activeReservations);
+            throw new IllegalStateException("Cannot delete member: Patron currently has " + activeReservations
+                    + " active waitlist reservation(s). Please cancel active reservations before deleting the member.");
+        }
+
+        // 5. Clean up historical reminder notifications, fines, borrowing logs, and past reservations for this member
         borrowingReminderRepository.deleteByMemberId(id);
         fineRepository.deleteByMemberId(id);
         borrowingRepository.deleteByMemberId(id);
+        reservationRepository.deleteByMemberId(id);
 
-        // 5. Delete member entity
+        // 6. Delete member entity
         memberRepository.delete(member);
         log.info("Member entity with ID: {} deleted from database", id);
 

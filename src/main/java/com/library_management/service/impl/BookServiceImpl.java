@@ -4,6 +4,7 @@ import com.library_management.dto.request.BookRequest;
 import com.library_management.dto.response.BookResponse;
 import com.library_management.entity.Book;
 import com.library_management.entity.FineStatus;
+import com.library_management.entity.ReservationStatus;
 import com.library_management.exception.BookNotAvailableException;
 import com.library_management.exception.DuplicateResourceException;
 import com.library_management.exception.ResourceNotFoundException;
@@ -11,12 +12,15 @@ import com.library_management.repository.BookRepository;
 import com.library_management.repository.BorrowingReminderRepository;
 import com.library_management.repository.BorrowingRepository;
 import com.library_management.repository.FineRepository;
+import com.library_management.repository.ReservationRepository;
 import com.library_management.service.BookService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
 
 /**
  * Production implementation of BookService.
@@ -30,17 +34,20 @@ public class BookServiceImpl implements BookService {
     private final BorrowingRepository borrowingRepository;
     private final FineRepository fineRepository;
     private final BorrowingReminderRepository borrowingReminderRepository;
+    private final ReservationRepository reservationRepository;
 
     // Constructor Injection
     public BookServiceImpl(
             BookRepository bookRepository,
             BorrowingRepository borrowingRepository,
             FineRepository fineRepository,
-            BorrowingReminderRepository borrowingReminderRepository) {
+            BorrowingReminderRepository borrowingReminderRepository,
+            ReservationRepository reservationRepository) {
         this.bookRepository = bookRepository;
         this.borrowingRepository = borrowingRepository;
         this.fineRepository = fineRepository;
         this.borrowingReminderRepository = borrowingReminderRepository;
+        this.reservationRepository = reservationRepository;
     }
 
     @Override
@@ -232,10 +239,21 @@ public class BookServiceImpl implements BookService {
             );
         }
 
-        // 4. Clean up historical reminders, settled fines, and returned borrowing records to satisfy FK constraints
+        // 4. Prevent deletion if active reservations exist for this book
+        long activeReservations = reservationRepository.countByBookIdAndStatusIn(
+                id, List.of(ReservationStatus.PENDING, ReservationStatus.READY_FOR_PICKUP)
+        );
+        if (activeReservations > 0) {
+            throw new BookNotAvailableException(
+                String.format("Cannot delete book with ID %d because %d active waitlist reservation(s) exist", id, activeReservations)
+            );
+        }
+
+        // 5. Clean up historical reminders, settled fines, returned borrowing records, and past reservations to satisfy FK constraints
         borrowingReminderRepository.deleteByBookId(id);
         fineRepository.deleteByBookId(id);
         borrowingRepository.deleteByBookId(id);
+        reservationRepository.deleteByBookId(id);
 
         bookRepository.delete(book);
         log.info("Successfully deleted book with ID: {}", id);

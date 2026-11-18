@@ -46,6 +46,9 @@ class BorrowingServiceImplTest {
     @Mock
     private com.library_management.service.FineService fineService;
 
+    @Mock
+    private com.library_management.repository.ReservationRepository reservationRepository;
+
     @Spy
     private BorrowingProperties borrowingProperties = new BorrowingProperties();
 

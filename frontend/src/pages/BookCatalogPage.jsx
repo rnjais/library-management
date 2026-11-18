@@ -29,6 +29,7 @@ import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import DeleteOutlineOutlinedIcon from '@mui/icons-material/DeleteOutlineOutlined'
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined'
 import BookmarkAddOutlinedIcon from '@mui/icons-material/BookmarkAddOutlined'
+import HourglassTopRoundedIcon from '@mui/icons-material/HourglassTopRounded'
 import MenuBookIcon from '@mui/icons-material/MenuBook'
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward'
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward'
@@ -39,6 +40,7 @@ import BookFormDialog from '../components/books/BookFormDialog'
 import BookDetailDialog from '../components/books/BookDetailDialog'
 import DeleteConfirmDialog from '../components/books/DeleteConfirmDialog'
 import BorrowBookDialog from '../components/borrowings/BorrowBookDialog'
+import ReserveBookDialog from '../components/reservations/ReserveBookDialog'
 import PageHeader from '../components/common/PageHeader'
 import EmptyState from '../components/common/EmptyState'
 
@@ -111,6 +113,9 @@ const BookCatalogPage = () => {
   const [deleteLoading, setDeleteLoading] = useState(false)
   const [borrowOpen, setBorrowOpen] = useState(false)
   const [selectedBookForBorrow, setSelectedBookForBorrow] = useState(null)
+
+  const [reserveOpen, setReserveOpen] = useState(false)
+  const [selectedBookForReserve, setSelectedBookForReserve] = useState(null)
 
   const loadBooks = useCallback(async () => {
     setLoading(true)
@@ -208,6 +213,18 @@ const BookCatalogPage = () => {
   const handleOpenBorrow = (book) => {
     setSelectedBookForBorrow(book)
     setBorrowOpen(true)
+  }
+
+  const handleOpenReserve = (book) => {
+    setSelectedBookForReserve(book)
+    setReserveOpen(true)
+  }
+
+  const handleReservationSuccess = (reservation) => {
+    setFeedbackMessage(
+      `Waitlist reservation #${reservation.id} confirmed for "${reservation.bookTitle}"! You are #${reservation.queuePosition || 1} in queue.`
+    )
+    loadBooks()
   }
 
   return (
@@ -489,6 +506,23 @@ const BookCatalogPage = () => {
                             </Tooltip>
                           )}
 
+                          {/* Reserve / Waitlist Button when copies are out */}
+                          {isAuthenticated && book.availableCopies <= 0 && (
+                            <Tooltip title="Copies out on loan — Join Waitlist">
+                              <IconButton
+                                size="small"
+                                onClick={() => handleOpenReserve(book)}
+                                sx={{
+                                  color: '#b45309',
+                                  bgcolor: '#fef3c7',
+                                  '&:hover': { bgcolor: '#fde68a' },
+                                }}
+                              >
+                                <HourglassTopRoundedIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          )}
+
                           {/* View Book Details */}
                           <Tooltip title="View Details">
                             <IconButton size="small" onClick={() => handleOpenDetail(book)} sx={{ color: '#64748b' }}>
@@ -607,6 +641,15 @@ const BookCatalogPage = () => {
             setBorrowOpen(false)
             loadBooks()
           }}
+        />
+      )}
+
+      {reserveOpen && (
+        <ReserveBookDialog
+          open={reserveOpen}
+          onClose={() => setReserveOpen(false)}
+          preselectedBook={selectedBookForReserve}
+          onReservationSuccess={handleReservationSuccess}
         />
       )}
     </Box>

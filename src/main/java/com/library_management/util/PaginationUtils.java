@@ -31,6 +31,10 @@ public final class PaginationUtils {
             "id", "amount", "overdueDays", "status", "calculatedAt", "paidAt"
     );
 
+    public static final Set<String> RESERVATION_SORT_FIELDS = Set.of(
+            "id", "reservationDate", "status", "pickupDeadline"
+    );
+
     private PaginationUtils() {
     }
 

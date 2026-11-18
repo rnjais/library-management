@@ -114,10 +114,12 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/api/fines/unpaid").hasRole("ADMIN")
                 .requestMatchers(HttpMethod.GET, "/api/fines").hasRole("ADMIN")
                 .requestMatchers(HttpMethod.PATCH, "/api/fines/*/pay").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.GET, "/api/reservations").hasRole("ADMIN")
 
                 // Member & Admin shared endpoints
                 .requestMatchers("/api/borrowings/**").hasAnyRole("ADMIN", "MEMBER")
                 .requestMatchers("/api/fines/**").hasAnyRole("ADMIN", "MEMBER")
+                .requestMatchers("/api/reservations/**").hasAnyRole("ADMIN", "MEMBER")
 
                 // Fallback for all other requests
                 .anyRequest().authenticated()

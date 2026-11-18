@@ -54,6 +54,9 @@ class MemberServiceImplTest {
     @Mock
     private UserRepository userRepository;
 
+    @Mock
+    private com.library_management.repository.ReservationRepository reservationRepository;
+
     @InjectMocks
     private MemberServiceImpl memberService;
 

@@ -47,6 +47,37 @@ const STATUS_MAP = {
     bgColor: '#fee2e2',
     dotColor: '#dc2626',
   },
+  // Reservation waitlist statuses
+  PENDING: {
+    label: 'Waitlisted',
+    color: '#b45309',
+    bgColor: '#fef3c7',
+    dotColor: '#f59e0b',
+  },
+  READY_FOR_PICKUP: {
+    label: 'Ready for Pickup',
+    color: '#6d28d9',
+    bgColor: '#ede9fe',
+    dotColor: '#8b5cf6',
+  },
+  FULFILLED: {
+    label: 'Fulfilled',
+    color: '#15803d',
+    bgColor: '#dcfce7',
+    dotColor: '#16a34a',
+  },
+  CANCELLED: {
+    label: 'Cancelled',
+    color: '#475569',
+    bgColor: '#f1f5f9',
+    dotColor: '#94a3b8',
+  },
+  EXPIRED: {
+    label: 'Expired',
+    color: '#b91c1c',
+    bgColor: '#fee2e2',
+    dotColor: '#dc2626',
+  },
 }
 
 /**

@@ -8,6 +8,8 @@ import com.library_management.entity.Borrowing;
 import com.library_management.entity.BorrowingStatus;
 import com.library_management.entity.FineStatus;
 import com.library_management.entity.Member;
+import com.library_management.entity.Reservation;
+import com.library_management.entity.ReservationStatus;
 import com.library_management.entity.Role;
 import com.library_management.entity.User;
 import com.library_management.exception.*;
@@ -17,6 +19,7 @@ import com.library_management.repository.BookRepository;
 import com.library_management.repository.BorrowingRepository;
 import com.library_management.repository.FineRepository;
 import com.library_management.repository.MemberRepository;
+import com.library_management.repository.ReservationRepository;
 import com.library_management.service.BorrowingService;
 import com.library_management.service.FineService;
 import lombok.extern.slf4j.Slf4j;
@@ -47,6 +50,7 @@ public class BorrowingServiceImpl implements BorrowingService {
     private final MemberRepository memberRepository;
     private final FineRepository fineRepository;
     private final FineService fineService;
+    private final ReservationRepository reservationRepository;
     private final BorrowingProperties borrowingProperties;
     private final ApplicationEventPublisher eventPublisher;
 
@@ -57,6 +61,7 @@ public class BorrowingServiceImpl implements BorrowingService {
             MemberRepository memberRepository,
             FineRepository fineRepository,
             FineService fineService,
+            ReservationRepository reservationRepository,
             BorrowingProperties borrowingProperties,
             ApplicationEventPublisher eventPublisher) {
         this.borrowingRepository = borrowingRepository;
@@ -64,6 +69,7 @@ public class BorrowingServiceImpl implements BorrowingService {
         this.memberRepository = memberRepository;
         this.fineRepository = fineRepository;
         this.fineService = fineService;
+        this.reservationRepository = reservationRepository;
         this.borrowingProperties = borrowingProperties;
         this.eventPublisher = eventPublisher;
     }
@@ -133,6 +139,17 @@ public class BorrowingServiceImpl implements BorrowingService {
             throw new BookNotAvailableException(book.getId());
         }
 
+        // 7b. Enforce reservation hold check: if available copies <= reservations held for pickup, only a reserved patron may borrow
+        long readyReservationsCount = reservationRepository.countByBookIdAndStatus(book.getId(), ReservationStatus.READY_FOR_PICKUP);
+        Optional<Reservation> readyReservation = reservationRepository.findByBookIdAndMemberIdAndStatus(
+                book.getId(), member.getId(), ReservationStatus.READY_FOR_PICKUP
+        );
+        if (book.getAvailableCopies() <= readyReservationsCount && readyReservation.isEmpty()) {
+            log.warn("Book id={} checkout blocked: available copies ({}) are reserved for waitlist pickup",
+                    book.getId(), book.getAvailableCopies());
+            throw new IllegalStateException("All available copies of this book are currently held for waitlisted patrons with pickup reservations.");
+        }
+
         // 8. Calculate and bound due date
         LocalDate today = LocalDate.now();
         int maxBorrowDays = borrowingProperties.getMaxBorrowDays();
@@ -177,6 +194,23 @@ public class BorrowingServiceImpl implements BorrowingService {
         log.info("Book id={} successfully borrowed by member id={}, borrowingId={}",
                 book.getId(), member.getId(), savedBorrowing.getId());
 
+        // Fulfill reservation if member held one
+        if (readyReservation.isPresent()) {
+            Reservation res = readyReservation.get();
+            res.setStatus(ReservationStatus.FULFILLED);
+            res.setFulfilledAt(java.time.LocalDateTime.now());
+            reservationRepository.save(res);
+            log.info("Fulfilled READY_FOR_PICKUP reservation id={} for member id={} on checkout", res.getId(), member.getId());
+        } else {
+            reservationRepository.findByBookIdAndMemberIdAndStatus(book.getId(), member.getId(), ReservationStatus.PENDING)
+                    .ifPresent(pendingRes -> {
+                        pendingRes.setStatus(ReservationStatus.FULFILLED);
+                        pendingRes.setFulfilledAt(java.time.LocalDateTime.now());
+                        reservationRepository.save(pendingRes);
+                        log.info("Fulfilled PENDING reservation id={} for member id={} on direct checkout", pendingRes.getId(), member.getId());
+                    });
+        }
+
         // Publish event for post-commit asynchronous notification
         eventPublisher.publishEvent(new BookBorrowedEvent(savedBorrowing));
 
@@ -216,6 +250,16 @@ public class BorrowingServiceImpl implements BorrowingService {
             book.setAvailableCopies(book.getAvailableCopies() + 1);
             bookRepository.save(book);
         }
+
+        // 5b. Auto-promote oldest PENDING reservation to READY_FOR_PICKUP with 48h deadline
+        reservationRepository.findFirstByBookIdAndStatusOrderByReservationDateAsc(book.getId(), ReservationStatus.PENDING)
+                .ifPresent(nextInLine -> {
+                    nextInLine.setStatus(ReservationStatus.READY_FOR_PICKUP);
+                    nextInLine.setPickupDeadline(java.time.LocalDateTime.now().plusHours(48));
+                    reservationRepository.save(nextInLine);
+                    log.info("Auto-promoted waitlist reservation id={} for member id={} to READY_FOR_PICKUP on return of book id={}",
+                            nextInLine.getId(), nextInLine.getMember().getId(), book.getId());
+                });
 
         // 6. Update borrowing record
         borrowing.setReturnDate(LocalDate.now());
