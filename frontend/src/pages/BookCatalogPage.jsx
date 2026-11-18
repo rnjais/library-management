@@ -2,14 +2,13 @@ import React, { useState, useEffect, useCallback } from 'react'
 import {
   Box,
   Typography,
-  Paper,
+  Card,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
-  TablePagination,
   TextField,
   InputAdornment,
   IconButton,
@@ -20,13 +19,17 @@ import {
   Alert,
   Tooltip,
   Skeleton,
+  Avatar,
+  Pagination,
 } from '@mui/material'
 import SearchIcon from '@mui/icons-material/Search'
 import ClearIcon from '@mui/icons-material/Clear'
 import AddIcon from '@mui/icons-material/Add'
-import EditIcon from '@mui/icons-material/Edit'
-import DeleteIcon from '@mui/icons-material/Delete'
-import VisibilityIcon from '@mui/icons-material/Visibility'
+import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
+import DeleteOutlineOutlinedIcon from '@mui/icons-material/DeleteOutlineOutlined'
+import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined'
+import BookmarkAddOutlinedIcon from '@mui/icons-material/BookmarkAddOutlined'
+import MenuBookIcon from '@mui/icons-material/MenuBook'
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward'
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward'
 import FilterListIcon from '@mui/icons-material/FilterList'
@@ -35,6 +38,9 @@ import { useAuth } from '../hooks/useAuth'
 import BookFormDialog from '../components/books/BookFormDialog'
 import BookDetailDialog from '../components/books/BookDetailDialog'
 import DeleteConfirmDialog from '../components/books/DeleteConfirmDialog'
+import BorrowBookDialog from '../components/borrowings/BorrowBookDialog'
+import PageHeader from '../components/common/PageHeader'
+import EmptyState from '../components/common/EmptyState'
 
 const CATEGORY_OPTIONS = [
   'ALL',
@@ -51,6 +57,19 @@ const CATEGORY_OPTIONS = [
   'Other',
 ]
 
+// Distinct pastel color palette for book cover thumbnails by category (Image 3 style)
+const GENRE_COLORS = {
+  'Computer Science': { bg: '#eff6ff', color: '#2563eb' },
+  'Software Engineering': { bg: '#eff6ff', color: '#1d4ed8' },
+  'Data Science & AI': { bg: '#f5f3ff', color: '#7c3aed' },
+  Mathematics: { bg: '#faf5ff', color: '#9333ea' },
+  Physics: { bg: '#f0fdfa', color: '#0d9488' },
+  Philosophy: { bg: '#fffbeb', color: '#b45309' },
+  'Literature & Fiction': { bg: '#fdf2f8', color: '#db2777' },
+  History: { bg: '#fff7ed', color: '#c2410c' },
+  'Business & Economics': { bg: '#f0fdf4', color: '#15803d' },
+}
+
 const SORT_OPTIONS = [
   { value: 'id', label: 'ID' },
   { value: 'title', label: 'Title' },
@@ -59,12 +78,16 @@ const SORT_OPTIONS = [
   { value: 'availableCopies', label: 'Availability' },
 ]
 
+/**
+ * Modern Book Catalog Management UI (Directly Inspired by Reference Image 3 "spik")
+ */
 const BookCatalogPage = () => {
-  const { isAdmin } = useAuth()
+  const { isAuthenticated, isAdmin } = useAuth()
 
   // Data State
   const [books, setBooks] = useState([])
   const [totalElements, setTotalElements] = useState(0)
+  const [totalPages, setTotalPages] = useState(1)
   const [loading, setLoading] = useState(true)
   const [apiError, setApiError] = useState(null)
   const [feedbackMessage, setFeedbackMessage] = useState(null)
@@ -78,7 +101,7 @@ const BookCatalogPage = () => {
   const [page, setPage] = useState(0)
   const [pageSize, setPageSize] = useState(10)
 
-  // Modals & Dialogs State
+  // Modals State
   const [formOpen, setFormOpen] = useState(false)
   const [selectedBookForEdit, setSelectedBookForEdit] = useState(null)
   const [detailOpen, setDetailOpen] = useState(false)
@@ -86,8 +109,9 @@ const BookCatalogPage = () => {
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [selectedBookForDelete, setSelectedBookForDelete] = useState(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
+  const [borrowOpen, setBorrowOpen] = useState(false)
+  const [selectedBookForBorrow, setSelectedBookForBorrow] = useState(null)
 
-  // Fetch Books from Backend
   const loadBooks = useCallback(async () => {
     setLoading(true)
     setApiError(null)
@@ -103,10 +127,12 @@ const BookCatalogPage = () => {
       })
       setBooks(pagedData.content || [])
       setTotalElements(pagedData.totalElements || 0)
+      setTotalPages(pagedData.totalPages || 1)
     } catch (err) {
       setApiError(err.message || 'Failed to fetch catalog books.')
       setBooks([])
       setTotalElements(0)
+      setTotalPages(1)
     } finally {
       setLoading(false)
     }
@@ -116,7 +142,6 @@ const BookCatalogPage = () => {
     loadBooks()
   }, [loadBooks])
 
-  // Search Handlers
   const handleSearchSubmit = (e) => {
     e?.preventDefault()
     setPage(0)
@@ -144,17 +169,7 @@ const BookCatalogPage = () => {
     setPage(0)
   }
 
-  // Pagination Handlers
-  const handleChangePage = (event, newPage) => {
-    setPage(newPage)
-  }
-
-  const handleChangeRowsPerPage = (event) => {
-    setPageSize(parseInt(event.target.value, 10))
-    setPage(0)
-  }
-
-  // Dialog Actions
+  // Admin Actions
   const handleOpenAdd = () => {
     setSelectedBookForEdit(null)
     setFormOpen(true)
@@ -178,362 +193,422 @@ const BookCatalogPage = () => {
   const handleConfirmDelete = async () => {
     if (!selectedBookForDelete) return
     setDeleteLoading(true)
-
     try {
       await bookService.deleteBook(selectedBookForDelete.id)
+      setFeedbackMessage(`Book "${selectedBookForDelete.title}" was removed from the catalog.`)
       setDeleteOpen(false)
-      setSelectedBookForDelete(null)
-      setFeedbackMessage('Book removed from catalog.')
       loadBooks()
     } catch (err) {
-      setApiError(err.message || 'Failed to delete book. Please check for active borrowings.')
-      setDeleteOpen(false)
+      setApiError(err.message || 'Failed to delete book.')
     } finally {
       setDeleteLoading(false)
     }
   }
 
-  const handleBookSaved = (message) => {
-    setFeedbackMessage(message)
-    loadBooks()
+  const handleOpenBorrow = (book) => {
+    setSelectedBookForBorrow(book)
+    setBorrowOpen(true)
   }
 
   return (
     <Box>
-      {/* Header Section */}
-      <Stack
-        direction={{ xs: 'column', sm: 'row' }}
-        justifyContent="space-between"
-        alignItems={{ xs: 'flex-start', sm: 'center' }}
-        spacing={2}
-        mb={3}
-      >
-        <Box>
-          <Typography variant="h4" component="h1" fontWeight={700} gutterBottom>
-            {isAdmin ? 'Manage Book Catalog' : 'Book Catalog'}
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Explore and search available library resources, track copies, and view catalog details.
-          </Typography>
-        </Box>
+      <PageHeader
+        title="Book Catalog"
+        subtitle="Explore, search, check out, and administer library titles"
+        breadcrumbs={[{ label: 'Catalog', path: null }]}
+      />
 
-        {isAdmin && (
-          <Button
-            variant="contained"
-            color="primary"
-            startIcon={<AddIcon />}
-            onClick={handleOpenAdd}
-            sx={{ fontWeight: 600, textTransform: 'none' }}
-          >
-            Add New Book
-          </Button>
-        )}
-      </Stack>
-
-      {/* Feedback Alerts */}
       {feedbackMessage && (
-        <Alert severity="success" onClose={() => setFeedbackMessage(null)} sx={{ mb: 2 }}>
+        <Alert severity="success" sx={{ mb: 3, borderRadius: 2.5 }} onClose={() => setFeedbackMessage(null)}>
           {feedbackMessage}
         </Alert>
       )}
 
       {apiError && (
-        <Alert severity="error" onClose={() => setApiError(null)} sx={{ mb: 2 }}>
+        <Alert severity="error" sx={{ mb: 3, borderRadius: 2.5 }} onClose={() => setApiError(null)}>
           {apiError}
         </Alert>
       )}
 
-      {/* Filter and Search Bar Toolbar */}
-      <Paper elevation={1} sx={{ p: 2, mb: 3, borderRadius: 2 }}>
+      {/* Main Table Container Card (Image 3 "spik" Table UI style) */}
+      <Card sx={{ borderRadius: 4, border: '1px solid #e2e8f0', p: { xs: 2, sm: 3.5 } }}>
+        {/* Table Toolbar Header (Image 3 Style) */}
         <Stack
           direction={{ xs: 'column', md: 'row' }}
+          justifyContent="space-between"
+          alignItems={{ xs: 'flex-start', md: 'center' }}
           spacing={2}
-          alignItems={{ xs: 'stretch', md: 'center' }}
+          mb={3}
         >
-          {/* Title Search Input */}
-          <Box component="form" onSubmit={handleSearchSubmit} sx={{ flexGrow: 1 }}>
-            <TextField
-              fullWidth
+          {/* Left Title + Total Badge */}
+          <Stack direction="row" alignItems="center" spacing={1.5}>
+            <Typography variant="h6" fontWeight={800} color="#0f172a">
+              All Books
+            </Typography>
+            <Chip
+              label={`${totalElements} titles`}
               size="small"
-              placeholder="Search by book title (e.g. Clean Code, Java, Design)..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <SearchIcon color="action" fontSize="small" />
-                  </InputAdornment>
-                ),
-                endAdornment: (
-                  <InputAdornment position="end">
-                    {searchTerm && (
+              sx={{ fontWeight: 700, bgcolor: '#eff6ff', color: '#2563eb', borderRadius: 2 }}
+            />
+          </Stack>
+
+          {/* Right Filters + Search + Action Button */}
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems="center" width={{ xs: '100%', md: 'auto' }}>
+            {/* Search Input */}
+            <Box component="form" onSubmit={handleSearchSubmit} sx={{ width: { xs: '100%', sm: 240 } }}>
+              <TextField
+                fullWidth
+                size="small"
+                placeholder="Search by title or author..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon sx={{ color: '#94a3b8', fontSize: 18 }} />
+                    </InputAdornment>
+                  ),
+                  endAdornment: searchTerm ? (
+                    <InputAdornment position="end">
                       <IconButton size="small" onClick={handleClearSearch} edge="end">
                         <ClearIcon fontSize="small" />
                       </IconButton>
-                    )}
-                    <Button
-                      variant="contained"
-                      size="small"
-                      type="submit"
-                      sx={{ ml: 1, textTransform: 'none' }}
-                    >
-                      Search
-                    </Button>
-                  </InputAdornment>
-                ),
+                    </InputAdornment>
+                  ) : null,
+                }}
+              />
+            </Box>
+
+            {/* Category Dropdown */}
+            <TextField
+              select
+              size="small"
+              value={category}
+              onChange={handleCategoryChange}
+              sx={{ minWidth: 150, width: { xs: '100%', sm: 'auto' } }}
+            >
+              {CATEGORY_OPTIONS.map((cat) => (
+                <MenuItem key={cat} value={cat}>
+                  {cat === 'ALL' ? 'All Categories' : cat}
+                </MenuItem>
+              ))}
+            </TextField>
+
+            {/* Sort Dropdown */}
+            <TextField
+              select
+              size="small"
+              value={sortBy}
+              onChange={handleSortChange}
+              sx={{ minWidth: 130, width: { xs: '100%', sm: 'auto' } }}
+            >
+              {SORT_OPTIONS.map((opt) => (
+                <MenuItem key={opt.value} value={opt.value}>
+                  Sort: {opt.label}
+                </MenuItem>
+              ))}
+            </TextField>
+
+            <Tooltip title={`Direction: ${direction}`}>
+              <IconButton size="small" onClick={handleToggleDirection} sx={{ border: '1px solid #e2e8f0', borderRadius: 2 }}>
+                {direction === 'ASC' ? <ArrowUpwardIcon fontSize="small" /> : <ArrowDownwardIcon fontSize="small" />}
+              </IconButton>
+            </Tooltip>
+
+            {/* "+ Add Book" Primary Button (Matching "+ Add Library" in Image 3) */}
+            {isAdmin && (
+              <Button
+                variant="contained"
+                startIcon={<AddIcon />}
+                onClick={handleOpenAdd}
+                sx={{
+                  bgcolor: '#2563eb',
+                  color: '#ffffff',
+                  fontWeight: 700,
+                  borderRadius: 2.5,
+                  px: 2.5,
+                  py: 0.85,
+                  whiteSpace: 'nowrap',
+                  boxShadow: '0 4px 12px rgba(37, 99, 235, 0.35)',
+                  '&:hover': { bgcolor: '#1d4ed8' },
+                }}
+              >
+                Add Book
+              </Button>
+            )}
+
+            {/* Member Quick Borrow Button */}
+            {!isAdmin && isAuthenticated && (
+              <Button
+                variant="contained"
+                startIcon={<BookmarkAddOutlinedIcon />}
+                onClick={() => handleOpenBorrow(null)}
+                sx={{
+                  bgcolor: '#2563eb',
+                  color: '#ffffff',
+                  fontWeight: 700,
+                  borderRadius: 2.5,
+                  px: 2.5,
+                  py: 0.85,
+                  whiteSpace: 'nowrap',
+                  boxShadow: '0 4px 12px rgba(37, 99, 235, 0.35)',
+                  '&:hover': { bgcolor: '#1d4ed8' },
+                }}
+              >
+                Borrow Book
+              </Button>
+            )}
+          </Stack>
+        </Stack>
+
+        {/* Catalog Data Table (Image 3 Style) */}
+        <TableContainer sx={{ overflowX: 'auto' }}>
+          <Table>
+            <TableHead>
+              <TableRow>
+                <TableCell>Book Name</TableCell>
+                <TableCell>Writer / Author</TableCell>
+                <TableCell>ID</TableCell>
+                <TableCell>Category</TableCell>
+                <TableCell align="center">Availability</TableCell>
+                <TableCell align="right">Actions</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {loading ? (
+                [1, 2, 3, 4, 5, 6].map((i) => (
+                  <TableRow key={i}>
+                    <TableCell><Skeleton width={200} height={32} /></TableCell>
+                    <TableCell><Skeleton width={140} /></TableCell>
+                    <TableCell><Skeleton width={50} /></TableCell>
+                    <TableCell><Skeleton width={100} /></TableCell>
+                    <TableCell align="center"><Skeleton width={80} /></TableCell>
+                    <TableCell align="right"><Skeleton width={100} /></TableCell>
+                  </TableRow>
+                ))
+              ) : books.length > 0 ? (
+                books.map((book) => {
+                  const genreTheme = GENRE_COLORS[book.category] || { bg: '#eff6ff', color: '#2563eb' }
+                  return (
+                    <TableRow key={book.id} hover sx={{ '&:last-child td': { border: 0 } }}>
+                      {/* Book Thumbnail + Title (Image 3 Style) */}
+                      <TableCell>
+                        <Stack direction="row" alignItems="center" spacing={1.75}>
+                          <Avatar
+                            sx={{
+                              width: 38,
+                              height: 38,
+                              borderRadius: 2.25,
+                              bgcolor: genreTheme.bg,
+                              color: genreTheme.color,
+                              fontWeight: 700,
+                              fontSize: '0.8125rem',
+                            }}
+                          >
+                            <MenuBookIcon sx={{ fontSize: 20 }} />
+                          </Avatar>
+                          <Box sx={{ maxWidth: 280 }}>
+                            <Typography variant="body2" sx={{ fontWeight: 700, color: '#0f172a', lineHeight: 1.25 }}>
+                              {book.title}
+                            </Typography>
+                            <Typography variant="caption" sx={{ color: '#64748b', fontSize: '0.72rem' }}>
+                              ISBN: {book.isbn}
+                            </Typography>
+                          </Box>
+                        </Stack>
+                      </TableCell>
+
+                      {/* Author */}
+                      <TableCell sx={{ color: '#334155', fontWeight: 500 }}>
+                        {book.author}
+                      </TableCell>
+
+                      {/* ID chip (Image 3 "#0021" style) */}
+                      <TableCell>
+                        <Chip
+                          label={`#${book.id}`}
+                          size="small"
+                          sx={{
+                            fontWeight: 700,
+                            bgcolor: '#f1f5f9',
+                            color: '#475569',
+                            fontSize: '0.72rem',
+                            borderRadius: 1.5,
+                          }}
+                        />
+                      </TableCell>
+
+                      {/* Category Pill */}
+                      <TableCell>
+                        <Chip
+                          label={book.category || 'General'}
+                          size="small"
+                          sx={{
+                            fontWeight: 600,
+                            fontSize: '0.75rem',
+                            borderRadius: 2,
+                            bgcolor: genreTheme.bg,
+                            color: genreTheme.color,
+                            border: '1px solid transparent',
+                          }}
+                        />
+                      </TableCell>
+
+                      {/* Availability */}
+                      <TableCell align="center">
+                        <Chip
+                          label={`${book.availableCopies} / ${book.totalCopies} Available`}
+                          size="small"
+                          sx={{
+                            fontWeight: 700,
+                            fontSize: '0.72rem',
+                            bgcolor: book.availableCopies > 0 ? '#dcfce7' : '#fee2e2',
+                            color: book.availableCopies > 0 ? '#15803d' : '#b91c1c',
+                            borderRadius: 2,
+                          }}
+                        />
+                      </TableCell>
+
+                      {/* Action Icons (Image 3 Style: Trash, Edit, View, Borrow) */}
+                      <TableCell align="right">
+                        <Stack direction="row" spacing={0.5} justifyContent="flex-end" alignItems="center">
+                          {/* Borrow Button for authenticated users */}
+                          {isAuthenticated && book.availableCopies > 0 && (
+                            <Tooltip title="Borrow this Book">
+                              <IconButton
+                                size="small"
+                                onClick={() => handleOpenBorrow(book)}
+                                sx={{
+                                  color: '#2563eb',
+                                  bgcolor: '#eff6ff',
+                                  '&:hover': { bgcolor: '#dbeafe' },
+                                }}
+                              >
+                                <BookmarkAddOutlinedIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          )}
+
+                          {/* View Book Details */}
+                          <Tooltip title="View Details">
+                            <IconButton size="small" onClick={() => handleOpenDetail(book)} sx={{ color: '#64748b' }}>
+                              <VisibilityOutlinedIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+
+                          {/* Admin Edit & Delete Icons (Image 3 style) */}
+                          {isAdmin && (
+                            <>
+                              <Tooltip title="Edit Book">
+                                <IconButton size="small" onClick={() => handleOpenEdit(book)} sx={{ color: '#64748b' }}>
+                                  <EditOutlinedIcon fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                              <Tooltip title="Delete Book">
+                                <IconButton
+                                  size="small"
+                                  onClick={() => handleOpenDelete(book)}
+                                  sx={{ color: '#ef4444', '&:hover': { bgcolor: '#fee2e2' } }}
+                                >
+                                  <DeleteOutlineOutlinedIcon fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                            </>
+                          )}
+                        </Stack>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={6} sx={{ p: 4 }}>
+                    <EmptyState
+                      title="No books found"
+                      description={
+                        activeSearch || category !== 'ALL'
+                          ? 'No titles match your current search query or filter.'
+                          : 'The book catalog is currently empty.'
+                      }
+                      actionText={isAdmin ? 'Add First Book' : undefined}
+                      onAction={isAdmin ? handleOpenAdd : undefined}
+                    />
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </TableContainer>
+
+        {/* Numbered Pill Pagination (Matching Reference Image 3: < 1 2 [3] 4 5 >) */}
+        {totalPages > 1 && (
+          <Box sx={{ mt: 3, pt: 2, borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'center' }}>
+            <Pagination
+              count={totalPages}
+              page={page + 1}
+              onChange={(e, p) => setPage(p - 1)}
+              color="primary"
+              shape="rounded"
+              sx={{
+                '& .MuiPaginationItem-root': {
+                  borderRadius: 2,
+                  fontWeight: 600,
+                  fontSize: '0.8125rem',
+                },
+                '& .Mui-selected': {
+                  bgcolor: '#2563eb !important',
+                  color: '#ffffff',
+                },
               }}
             />
           </Box>
+        )}
+      </Card>
 
-          {/* Category Filter */}
-          <TextField
-            select
-            size="small"
-            label="Category"
-            value={category}
-            onChange={handleCategoryChange}
-            sx={{ minWidth: 180 }}
-          >
-            {CATEGORY_OPTIONS.map((cat) => (
-              <MenuItem key={cat} value={cat}>
-                {cat === 'ALL' ? 'All Categories' : cat}
-              </MenuItem>
-            ))}
-          </TextField>
-
-          {/* Sort Selection */}
-          <TextField
-            select
-            size="small"
-            label="Sort By"
-            value={sortBy}
-            onChange={handleSortChange}
-            sx={{ minWidth: 150 }}
-          >
-            {SORT_OPTIONS.map((opt) => (
-              <MenuItem key={opt.value} value={opt.value}>
-                {opt.label}
-              </MenuItem>
-            ))}
-          </TextField>
-
-          {/* Sort Direction Toggle */}
-          <Tooltip title={`Direction: ${direction === 'ASC' ? 'Ascending' : 'Descending'}`}>
-            <Button
-              variant="outlined"
-              size="medium"
-              onClick={handleToggleDirection}
-              startIcon={direction === 'ASC' ? <ArrowUpwardIcon /> : <ArrowDownwardIcon />}
-              sx={{ minWidth: 110, textTransform: 'none' }}
-            >
-              {direction}
-            </Button>
-          </Tooltip>
-        </Stack>
-      </Paper>
-
-      {/* Book Catalog Table */}
-      <TableContainer component={Paper} elevation={2} sx={{ borderRadius: 2, overflow: 'hidden' }}>
-        <Table aria-label="book catalog table">
-          <TableHead sx={{ bgcolor: 'background.default' }}>
-            <TableRow>
-              <TableCell sx={{ fontWeight: 700 }}>Title & Author</TableCell>
-              <TableCell sx={{ fontWeight: 700 }}>Category</TableCell>
-              <TableCell sx={{ fontWeight: 700 }}>ISBN</TableCell>
-              <TableCell align="center" sx={{ fontWeight: 700 }}>
-                Total Copies
-              </TableCell>
-              <TableCell align="center" sx={{ fontWeight: 700 }}>
-                Available
-              </TableCell>
-              <TableCell align="right" sx={{ fontWeight: 700 }}>
-                Actions
-              </TableCell>
-            </TableRow>
-          </TableHead>
-
-          <TableBody>
-            {loading ? (
-              // Loading Skeleton Rows
-              Array.from({ length: pageSize }).map((_, index) => (
-                <TableRow key={index}>
-                  <TableCell>
-                    <Skeleton variant="text" width="70%" />
-                    <Skeleton variant="text" width="40%" />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton variant="rectangular" width={90} height={24} sx={{ borderRadius: 4 }} />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton variant="text" width={110} />
-                  </TableCell>
-                  <TableCell align="center">
-                    <Skeleton variant="text" width={30} sx={{ mx: 'auto' }} />
-                  </TableCell>
-                  <TableCell align="center">
-                    <Skeleton variant="text" width={50} sx={{ mx: 'auto' }} />
-                  </TableCell>
-                  <TableCell align="right">
-                    <Skeleton variant="rectangular" width={80} height={32} sx={{ ml: 'auto' }} />
-                  </TableCell>
-                </TableRow>
-              ))
-            ) : books.length > 0 ? (
-              books.map((book) => {
-                const isAvailable = book.availableCopies > 0
-                return (
-                  <TableRow key={book.id} hover>
-                    {/* Title & Author */}
-                    <TableCell>
-                      <Typography variant="subtitle2" fontWeight={600} color="primary.main">
-                        {book.title}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        by {book.author}
-                      </Typography>
-                    </TableCell>
-
-                    {/* Category */}
-                    <TableCell>
-                      <Chip
-                        label={book.category}
-                        size="small"
-                        color="default"
-                        variant="outlined"
-                        sx={{ fontSize: '0.72rem' }}
-                      />
-                    </TableCell>
-
-                    {/* ISBN */}
-                    <TableCell>
-                      <Typography variant="body2" fontFamily="monospace" fontSize="0.82rem">
-                        {book.isbn}
-                      </Typography>
-                    </TableCell>
-
-                    {/* Total Copies */}
-                    <TableCell align="center">
-                      <Typography variant="body2" fontWeight={600}>
-                        {book.totalCopies}
-                      </Typography>
-                    </TableCell>
-
-                    {/* Available Copies Badge */}
-                    <TableCell align="center">
-                      <Chip
-                        label={isAvailable ? `${book.availableCopies} available` : 'Out of Stock'}
-                        size="small"
-                        color={isAvailable ? 'success' : 'error'}
-                        variant={isAvailable ? 'outlined' : 'filled'}
-                        sx={{ fontWeight: 600, fontSize: '0.7rem' }}
-                      />
-                    </TableCell>
-
-                    {/* Actions */}
-                    <TableCell align="right">
-                      <Stack direction="row" spacing={0.5} justifyContent="flex-end">
-                        <Tooltip title="View Specifications">
-                          <IconButton
-                            size="small"
-                            color="info"
-                            onClick={() => handleOpenDetail(book)}
-                          >
-                            <VisibilityIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-
-                        {isAdmin && (
-                          <>
-                            <Tooltip title="Edit Book">
-                              <IconButton
-                                size="small"
-                                color="primary"
-                                onClick={() => handleOpenEdit(book)}
-                              >
-                                <EditIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-
-                            <Tooltip title="Delete Book">
-                              <IconButton
-                                size="small"
-                                color="error"
-                                onClick={() => handleOpenDelete(book)}
-                              >
-                                <DeleteIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                          </>
-                        )}
-                      </Stack>
-                    </TableCell>
-                  </TableRow>
-                )
-              })
-            ) : (
-              // Empty State
-              <TableRow>
-                <TableCell colSpan={6} align="center" sx={{ py: 6 }}>
-                  <Typography variant="subtitle1" fontWeight={600} gutterBottom>
-                    No books found in catalog.
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" mb={2}>
-                    {activeSearch || category !== 'ALL'
-                      ? 'Try modifying your search keywords or clearing active filters.'
-                      : 'The library catalog is currently empty. Add books to get started.'}
-                  </Typography>
-                  {(activeSearch || category !== 'ALL') && (
-                    <Button
-                      variant="outlined"
-                      size="small"
-                      startIcon={<FilterListIcon />}
-                      onClick={() => {
-                        handleClearSearch()
-                        setCategory('ALL')
-                      }}
-                    >
-                      Reset All Filters
-                    </Button>
-                  )}
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-
-        {/* Pagination Controls */}
-        <TablePagination
-          rowsPerPageOptions={[5, 10, 25, 50]}
-          component="div"
-          count={totalElements}
-          rowsPerPage={pageSize}
-          page={page}
-          onPageChange={handleChangePage}
-          onRowsPerPageChange={handleChangeRowsPerPage}
+      {/* Domain Dialogs */}
+      {formOpen && (
+        <BookFormDialog
+          open={formOpen}
+          onClose={() => setFormOpen(false)}
+          bookToEdit={selectedBookForEdit}
+          onBookSaved={() => {
+            setFeedbackMessage(selectedBookForEdit ? 'Book updated successfully.' : 'New book added to catalog.')
+            setFormOpen(false)
+            loadBooks()
+          }}
         />
-      </TableContainer>
+      )}
 
-      {/* Dialogs */}
-      <BookFormDialog
-        open={formOpen}
-        onClose={() => setFormOpen(false)}
-        bookToEdit={selectedBookForEdit}
-        onBookSaved={handleBookSaved}
-      />
+      {detailOpen && (
+        <BookDetailDialog
+          open={detailOpen}
+          onClose={() => setDetailOpen(false)}
+          book={selectedBookForDetail}
+        />
+      )}
 
-      <BookDetailDialog
-        open={detailOpen}
-        onClose={() => setDetailOpen(false)}
-        book={selectedBookForDetail}
-      />
+      {deleteOpen && (
+        <DeleteConfirmDialog
+          open={deleteOpen}
+          onClose={() => setDeleteOpen(false)}
+          onConfirm={handleConfirmDelete}
+          bookTitle={selectedBookForDelete?.title}
+          loading={deleteLoading}
+        />
+      )}
 
-      <DeleteConfirmDialog
-        open={deleteOpen}
-        onClose={() => setDeleteOpen(false)}
-        book={selectedBookForDelete}
-        onConfirm={handleConfirmDelete}
-        loading={deleteLoading}
-      />
+      {borrowOpen && (
+        <BorrowBookDialog
+          open={borrowOpen}
+          onClose={() => setBorrowOpen(false)}
+          preselectedBook={selectedBookForBorrow}
+          onBorrowSuccess={(msg) => {
+            setFeedbackMessage(msg)
+            setBorrowOpen(false)
+            loadBooks()
+          }}
+        />
+      )}
     </Box>
   )
 }

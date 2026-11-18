@@ -15,25 +15,42 @@ import {
   ListItemText,
   Divider,
   Tooltip,
+  TextField,
+  InputAdornment,
 } from '@mui/material'
 import MenuIcon from '@mui/icons-material/Menu'
-import LocalLibraryIcon from '@mui/icons-material/LocalLibrary'
-import LogoutIcon from '@mui/icons-material/Logout'
-import LoginIcon from '@mui/icons-material/Login'
-import PersonAddIcon from '@mui/icons-material/PersonAdd'
-import DashboardIcon from '@mui/icons-material/Dashboard'
-import BookmarksIcon from '@mui/icons-material/Bookmarks'
-import MonetizationOnIcon from '@mui/icons-material/MonetizationOn'
+import SearchIcon from '@mui/icons-material/Search'
+import LogoutOutlinedIcon from '@mui/icons-material/LogoutOutlined'
+import LoginOutlinedIcon from '@mui/icons-material/LoginOutlined'
+import PersonAddOutlinedIcon from '@mui/icons-material/PersonAddOutlined'
+import DashboardOutlinedIcon from '@mui/icons-material/DashboardOutlined'
+import BookmarksOutlinedIcon from '@mui/icons-material/BookmarksOutlined'
+import MonetizationOnOutlinedIcon from '@mui/icons-material/MonetizationOnOutlined'
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
 import { ROUTES } from '../../utils/constants'
 
+const ROUTE_TITLES = {
+  [ROUTES.HOME]: { title: 'Dashboard Overview', subtitle: 'Public Catalog & Operations' },
+  [ROUTES.LOGIN]: { title: 'Sign In', subtitle: 'Access your account' },
+  [ROUTES.REGISTER]: { title: 'Create Account', subtitle: 'Join library membership' },
+  [ROUTES.BOOKS]: { title: 'Book Catalog', subtitle: 'Browse and search library collection' },
+  [ROUTES.MY_BORROWINGS]: { title: 'My Borrowings', subtitle: 'Active loans and return schedule' },
+  [ROUTES.MY_FINES]: { title: 'My Fines', subtitle: 'Unpaid fee balances and history' },
+  [ROUTES.ADMIN_DASHBOARD]: { title: 'Dashboard', subtitle: 'Live Library Operations & KPIs' },
+  [ROUTES.ADMIN_BOOKS]: { title: 'Manage Books', subtitle: 'Catalog titles, inventory, and copies' },
+  [ROUTES.ADMIN_MEMBERS]: { title: 'Manage Members', subtitle: 'Patron accounts, activations, and profiles' },
+  [ROUTES.ADMIN_BORROWINGS]: { title: 'Circulation & Loans', subtitle: 'Active checkouts, returns, and overdue tracking' },
+  [ROUTES.ADMIN_FINES]: { title: 'Fines & Payments', subtitle: 'Assessments, fee records, and settlements' },
+  [ROUTES.ADMIN_REPORTS]: { title: 'Reports & Analytics', subtitle: 'Inventory statistics, trends, and export' },
+}
+
 const Navbar = ({ onToggleSidebar }) => {
   const navigate = useNavigate()
+  const location = useLocation()
   const { user, isAuthenticated, isAdmin, logout } = useAuth()
 
-  // Profile Menu Anchor State
   const [anchorEl, setAnchorEl] = useState(null)
   const isMenuOpen = Boolean(anchorEl)
 
@@ -56,101 +73,164 @@ const Navbar = ({ onToggleSidebar }) => {
     navigate(ROUTES.LOGIN)
   }
 
-  return (
-    <AppBar position="sticky">
-      <Toolbar sx={{ justifyContent: 'space-between', px: { xs: 2, sm: 3 } }}>
-        {/* Left: Mobile Drawer Toggle & Logo */}
-        <Stack direction="row" alignItems="center" spacing={1}>
-          <IconButton
-            color="inherit"
-            edge="start"
-            onClick={onToggleSidebar}
-            aria-label="open drawer"
-            sx={{ mr: { xs: 0.5, sm: 1 } }}
-          >
-            <MenuIcon />
-          </IconButton>
+  const currentRouteInfo = ROUTE_TITLES[location.pathname] || {
+    title: 'Library Management',
+    subtitle: 'Management System',
+  }
 
-          <Box
-            display="flex"
-            alignItems="center"
-            sx={{ cursor: 'pointer' }}
-            onClick={() => navigate(isAdmin ? ROUTES.ADMIN_DASHBOARD : ROUTES.HOME)}
-          >
-            <LocalLibraryIcon sx={{ color: 'primary.main', fontSize: { xs: 26, sm: 30 }, mr: 1 }} />
+  return (
+    <AppBar
+      position="sticky"
+      sx={{
+        bgcolor: '#ffffff',
+        borderBottom: '1px solid #e2e8f0',
+        zIndex: (theme) => theme.zIndex.drawer + 1,
+      }}
+    >
+      <Toolbar
+        sx={{
+          justifyContent: 'space-between',
+          px: { xs: 2, sm: 3.5 },
+          minHeight: { xs: 64, sm: 72 },
+        }}
+      >
+        {/* Left: Sidebar Toggle + Title & Subtitle */}
+        <Stack direction="row" alignItems="center" spacing={2}>
+          <Tooltip title="Toggle Navigation">
+            <IconButton
+              edge="start"
+              onClick={onToggleSidebar}
+              aria-label="Toggle navigation"
+              sx={{
+                color: '#475569',
+                borderRadius: 2.5,
+                bgcolor: '#f8fafc',
+                border: '1px solid #e2e8f0',
+                p: 1,
+                '&:hover': { bgcolor: '#f1f5f9', color: '#0f172a' },
+              }}
+            >
+              <MenuIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+
+          <Box>
             <Typography
               variant="h6"
               component="div"
               sx={{
-                fontWeight: 700,
-                color: 'primary.main',
-                display: { xs: 'none', sm: 'block' },
-                letterSpacing: '-0.5px',
+                fontWeight: 800,
+                color: '#0f172a',
+                fontSize: { xs: '1rem', sm: '1.25rem' },
+                lineHeight: 1.2,
+                letterSpacing: '-0.02em',
               }}
             >
-              LibraryMS
+              {currentRouteInfo.title}
+            </Typography>
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ display: { xs: 'none', sm: 'block' }, fontSize: '0.75rem', fontWeight: 500 }}
+            >
+              {currentRouteInfo.subtitle}
             </Typography>
           </Box>
         </Stack>
 
-        {/* Right: Auth Profile Dropdown / Login Actions */}
-        <Stack direction="row" alignItems="center" spacing={1.5}>
+        {/* Right: Quick Search Input (Image 3) + Profile Avatar */}
+        <Stack direction="row" alignItems="center" spacing={2}>
+          {/* Quick Search Entry */}
+          <Box
+            onClick={() => navigate(ROUTES.BOOKS)}
+            sx={{
+              display: { xs: 'none', md: 'flex' },
+              alignItems: 'center',
+              bgcolor: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              borderRadius: 3,
+              px: 2,
+              py: 0.75,
+              width: 260,
+              cursor: 'pointer',
+              transition: 'border-color 150ms ease, box-shadow 150ms ease',
+              '&:hover': {
+                borderColor: '#cbd5e1',
+                bgcolor: '#ffffff',
+                boxShadow: '0 2px 6px rgba(0,0,0,0.04)',
+              },
+            }}
+          >
+            <SearchIcon sx={{ color: '#94a3b8', fontSize: 18, mr: 1 }} />
+            <Typography variant="body2" color="#94a3b8" sx={{ fontSize: '0.8125rem' }}>
+              Search catalog titles...
+            </Typography>
+          </Box>
+
           {isAuthenticated ? (
             <>
-              {/* Role Indicator Chip */}
+              {/* Role Chip */}
               <Chip
                 label={isAdmin ? 'ADMIN' : 'MEMBER'}
                 size="small"
-                color={isAdmin ? 'primary' : 'secondary'}
-                variant="outlined"
                 sx={{
                   fontWeight: 700,
-                  fontSize: '0.72rem',
+                  fontSize: '0.6875rem',
+                  height: 24,
+                  bgcolor: isAdmin ? '#eff6ff' : '#f0fdf4',
+                  color: isAdmin ? '#1e40af' : '#15803d',
+                  border: '1px solid',
+                  borderColor: isAdmin ? '#bfdbfe' : '#bbf7d0',
                   display: { xs: 'none', sm: 'inline-flex' },
                 }}
               />
 
               {/* Profile Menu Trigger */}
-              <Tooltip title="Account & Preferences">
+              <Tooltip title="Account menu">
                 <Button
                   color="inherit"
                   onClick={handleOpenMenu}
-                  endIcon={<KeyboardArrowDownIcon sx={{ display: { xs: 'none', sm: 'block' } }} />}
+                  endIcon={<KeyboardArrowDownIcon sx={{ color: '#64748b', fontSize: 18 }} />}
                   sx={{
                     textTransform: 'none',
-                    px: { xs: 0.5, sm: 1.5 },
-                    py: 0.5,
-                    borderRadius: 2,
-                    border: '1px solid',
-                    borderColor: 'divider',
+                    p: 0.5,
+                    borderRadius: 3,
+                    border: '1px solid #e2e8f0',
+                    '&:hover': { bgcolor: '#f8fafc', borderColor: '#cbd5e1' },
                   }}
                 >
                   <Avatar
                     sx={{
-                      width: 32,
-                      height: 32,
-                      bgcolor: isAdmin ? 'primary.main' : 'secondary.main',
+                      width: 36,
+                      height: 36,
+                      bgcolor: isAdmin ? '#172554' : '#2563eb',
                       fontSize: 14,
-                      fontWeight: 600,
+                      fontWeight: 700,
                       mr: { xs: 0, sm: 1 },
                     }}
                   >
                     {user?.name ? user.name.charAt(0).toUpperCase() : 'U'}
                   </Avatar>
-                  <Typography
-                    variant="body2"
-                    sx={{
-                      display: { xs: 'none', md: 'block' },
-                      fontWeight: 600,
-                      color: 'text.primary',
-                      maxWidth: 160,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {user?.name || user?.email}
-                  </Typography>
+                  <Box sx={{ display: { xs: 'none', md: 'block' }, textAlign: 'left', pr: 0.5 }}>
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        fontWeight: 700,
+                        color: '#0f172a',
+                        fontSize: '0.8125rem',
+                        lineHeight: 1.2,
+                        maxWidth: 130,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {user?.name || user?.email}
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: '#64748b', fontSize: '0.6875rem' }}>
+                      {isAdmin ? 'Administrator' : 'Library Member'}
+                    </Typography>
+                  </Box>
                 </Button>
               </Tooltip>
 
@@ -168,12 +248,12 @@ const Navbar = ({ onToggleSidebar }) => {
                   sx: {
                     minWidth: 230,
                     mt: 1.5,
-                    borderRadius: 2,
+                    borderRadius: 3,
                     p: 0.5,
+                    border: '1px solid #e2e8f0',
                   },
                 }}
               >
-                {/* Menu Header with User Info */}
                 <Box sx={{ px: 2, py: 1.5 }}>
                   <Typography variant="subtitle2" fontWeight={700} noWrap>
                     {user?.name || 'Library User'}
@@ -181,77 +261,71 @@ const Navbar = ({ onToggleSidebar }) => {
                   <Typography variant="caption" color="text.secondary" display="block" noWrap>
                     {user?.email}
                   </Typography>
-                  <Chip
-                    label={user?.role || (isAdmin ? 'ADMIN' : 'MEMBER')}
-                    size="small"
-                    color={isAdmin ? 'primary' : 'secondary'}
-                    sx={{ mt: 1, height: 20, fontSize: '0.68rem', fontWeight: 700 }}
-                  />
                 </Box>
 
-                <Divider sx={{ my: 1 }} />
+                <Divider sx={{ my: 0.5 }} />
 
-                {/* Role Specific Navigation Items */}
                 {isAdmin ? (
-                  <MenuItem onClick={() => handleNavigate(ROUTES.ADMIN_DASHBOARD)}>
+                  <MenuItem onClick={() => handleNavigate(ROUTES.ADMIN_DASHBOARD)} sx={{ borderRadius: 1.5 }}>
                     <ListItemIcon>
-                      <DashboardIcon fontSize="small" color="primary" />
+                      <DashboardOutlinedIcon fontSize="small" sx={{ color: '#2563eb' }} />
                     </ListItemIcon>
-                    <ListItemText primary="Admin Dashboard" />
+                    <ListItemText primary="Admin Dashboard" primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: 500 }} />
                   </MenuItem>
                 ) : (
                   <>
-                    <MenuItem onClick={() => handleNavigate(ROUTES.MY_BORROWINGS)}>
+                    <MenuItem onClick={() => handleNavigate(ROUTES.MY_BORROWINGS)} sx={{ borderRadius: 1.5 }}>
                       <ListItemIcon>
-                        <BookmarksIcon fontSize="small" color="secondary" />
+                        <BookmarksOutlinedIcon fontSize="small" sx={{ color: '#2563eb' }} />
                       </ListItemIcon>
-                      <ListItemText primary="My Borrowings" />
+                      <ListItemText primary="My Borrowings" primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: 500 }} />
                     </MenuItem>
-                    <MenuItem onClick={() => handleNavigate(ROUTES.MY_FINES)}>
+                    <MenuItem onClick={() => handleNavigate(ROUTES.MY_FINES)} sx={{ borderRadius: 1.5 }}>
                       <ListItemIcon>
-                        <MonetizationOnIcon fontSize="small" color="secondary" />
+                        <MonetizationOnOutlinedIcon fontSize="small" sx={{ color: '#2563eb' }} />
                       </ListItemIcon>
-                      <ListItemText primary="My Fines" />
+                      <ListItemText primary="My Fines" primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: 500 }} />
                     </MenuItem>
                   </>
                 )}
 
-                <Divider sx={{ my: 1 }} />
+                <Divider sx={{ my: 0.5 }} />
 
-                {/* Logout Action */}
-                <MenuItem onClick={handleLogout} sx={{ color: 'error.main' }}>
+                <MenuItem onClick={handleLogout} sx={{ color: 'error.main', borderRadius: 1.5 }}>
                   <ListItemIcon>
-                    <LogoutIcon fontSize="small" color="error" />
+                    <LogoutOutlinedIcon fontSize="small" color="error" />
                   </ListItemIcon>
-                  <ListItemText primary="Log Out" />
+                  <ListItemText primary="Logout" primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: 600 }} />
                 </MenuItem>
               </Menu>
             </>
           ) : (
-            <>
+            <Stack direction="row" spacing={1}>
               <Button
                 variant="outlined"
                 size="small"
-                startIcon={<LoginIcon />}
+                startIcon={<LoginOutlinedIcon />}
                 onClick={() => navigate(ROUTES.LOGIN)}
-                sx={{ textTransform: 'none', fontWeight: 600 }}
+                sx={{ borderRadius: 2.5, fontWeight: 600 }}
               >
                 Sign In
               </Button>
               <Button
                 variant="contained"
                 size="small"
-                startIcon={<PersonAddIcon />}
+                startIcon={<PersonAddOutlinedIcon />}
                 onClick={() => navigate(ROUTES.REGISTER)}
                 sx={{
-                  textTransform: 'none',
+                  borderRadius: 2.5,
                   fontWeight: 600,
+                  bgcolor: '#2563eb',
+                  '&:hover': { bgcolor: '#1d4ed8' },
                   display: { xs: 'none', sm: 'inline-flex' },
                 }}
               >
                 Register
               </Button>
-            </>
+            </Stack>
           )}
         </Stack>
       </Toolbar>

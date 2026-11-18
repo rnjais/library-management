@@ -186,4 +186,39 @@ class BorrowingAndFineIntegrationTest {
         // 4. Attempting to pay again throws FineAlreadyPaidException
         assertThrows(FineAlreadyPaidException.class, () -> fineService.payFine(fine.getId(), null));
     }
+
+    @Test
+    @DisplayName("Integration: Member with unpaid fine is blocked from borrowing new books until settled")
+    void testBorrowBook_BlockedWhenUnpaidFineExists() {
+        Borrowing pastLoan = borrowingRepository.save(Borrowing.builder()
+                .book(testBook)
+                .member(testMember)
+                .borrowDate(LocalDate.now().minusDays(20))
+                .dueDate(LocalDate.now().minusDays(5))
+                .returnDate(LocalDate.now().minusDays(1))
+                .status(BorrowingStatus.RETURNED)
+                .build());
+
+        Fine unpaidFine = fineRepository.save(Fine.builder()
+                .borrowing(pastLoan)
+                .amount(new BigDecimal("20.00"))
+                .overdueDays(4)
+                .status(FineStatus.UNPAID)
+                .build());
+
+        BorrowingRequestDto request = BorrowingRequestDto.builder()
+                .bookId(testBook.getId())
+                .memberId(testMember.getId())
+                .borrowDays(14)
+                .build();
+
+        // Blocked while fine is UNPAID
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> borrowingService.borrowBook(request));
+        assertTrue(ex.getMessage().contains("unpaid fine"));
+
+        // Pay fine -> now borrowing succeeds
+        fineService.payFine(unpaidFine.getId(), null);
+        BorrowingResponseDto response = borrowingService.borrowBook(request);
+        assertEquals(BorrowingStatus.BORROWED, response.getStatus());
+    }
 }

@@ -8,6 +8,8 @@ import com.library_management.entity.Borrowing;
 import com.library_management.entity.Fine;
 import com.library_management.entity.FineStatus;
 import com.library_management.entity.Member;
+import com.library_management.entity.Role;
+import com.library_management.entity.User;
 import com.library_management.event.FineCreatedEvent;
 import com.library_management.event.FinePaidEvent;
 import com.library_management.exception.FineAlreadyPaidException;
@@ -19,6 +21,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,6 +32,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.Optional;
 
 /**
  * Service implementation containing business logic for Fine Management.
@@ -111,7 +118,8 @@ public class FineServiceImpl implements FineService {
     }
 
     /**
-     * Marks an existing fine as PAID.
+     * Marks an existing fine as PAID and records optional payment audit metadata.
+     * Restricted to administrators so members cannot self-waive unpaid fines.
      */
     @Override
     @Transactional
@@ -119,9 +127,13 @@ public class FineServiceImpl implements FineService {
         if (fineId == null) {
             throw new IllegalArgumentException("Fine ID cannot be null");
         }
+        if (getAuthenticatedMemberEmail().isPresent()) {
+            log.warn("Unauthorized fine settlement attempt by ROLE_MEMBER on fineId={}", fineId);
+            throw new AccessDeniedException("Access denied: Only library administrators can record fine payments.");
+        }
 
-        // 1. Verify fine exists
-        Fine fine = fineRepository.findById(fineId)
+        // 1. Acquire pessimistic write lock on fine to serialize concurrent settlement attempts
+        Fine fine = fineRepository.findByIdWithPessimisticLock(fineId)
                 .orElseThrow(() -> new ResourceNotFoundException("Fine", "id", fineId));
 
         // 2. Prevent paying an already-paid fine
@@ -130,15 +142,26 @@ public class FineServiceImpl implements FineService {
             throw new FineAlreadyPaidException(fineId);
         }
 
-        // 3. Mark fine as paid
-        fine.markAsPaid();
+        // 3. Extract optional payment audit metadata
+        String paymentMethod = (paymentRequest != null && paymentRequest.getPaymentMethod() != null && !paymentRequest.getPaymentMethod().isBlank())
+                ? paymentRequest.getPaymentMethod().trim()
+                : null;
+        String transactionReference = (paymentRequest != null && paymentRequest.getTransactionReference() != null && !paymentRequest.getTransactionReference().isBlank())
+                ? paymentRequest.getTransactionReference().trim()
+                : null;
+        String paymentNotes = (paymentRequest != null && paymentRequest.getNotes() != null && !paymentRequest.getNotes().isBlank())
+                ? paymentRequest.getNotes().trim()
+                : null;
+
+        // 4. Mark fine as paid with audit metadata
+        fine.markAsPaid(paymentMethod, transactionReference, paymentNotes);
         Fine updatedFine = fineRepository.save(fine);
 
         // Publish event for post-commit fine payment receipt
         eventPublisher.publishEvent(new FinePaidEvent(updatedFine));
 
-        log.info("Fine id={} successfully marked as PAID. Amount: {} {}",
-                fineId, updatedFine.getAmount(), fineProperties.getCurrency());
+        log.info("Fine id={} successfully marked as PAID. Amount: {} {}, method={}, ref={}",
+                fineId, updatedFine.getAmount(), fineProperties.getCurrency(), paymentMethod, transactionReference);
 
         return FineResponseDto.fromEntity(updatedFine);
     }
@@ -150,6 +173,7 @@ public class FineServiceImpl implements FineService {
         }
         Fine fine = fineRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Fine", "id", id));
+        enforceFineOwnership(fine);
         return FineResponseDto.fromEntity(fine);
     }
 
@@ -160,6 +184,7 @@ public class FineServiceImpl implements FineService {
         }
         Fine fine = fineRepository.findByBorrowingId(borrowingId)
                 .orElseThrow(() -> new ResourceNotFoundException("Fine", "borrowingId", borrowingId));
+        enforceFineOwnership(fine);
         return FineResponseDto.fromEntity(fine);
     }
 
@@ -176,6 +201,7 @@ public class FineServiceImpl implements FineService {
         if (memberId == null) {
             throw new IllegalArgumentException("Member ID cannot be null");
         }
+        enforceRequestedMemberOwnership(memberId);
         if (!memberRepository.existsById(memberId)) {
             throw new ResourceNotFoundException("Member", "id", memberId);
         }
@@ -195,11 +221,12 @@ public class FineServiceImpl implements FineService {
         if (memberId == null) {
             throw new IllegalArgumentException("Member ID cannot be null");
         }
+        enforceRequestedMemberOwnership(memberId);
         Member member = memberRepository.findById(memberId)
                 .orElseThrow(() -> new ResourceNotFoundException("Member", "id", memberId));
 
-        BigDecimal totalUnpaid = fineRepository.sumAmountByMemberIdAndStatus(memberId, FineStatus.UNPAID);
-        long count = fineRepository.countByMemberIdAndStatus(memberId, FineStatus.UNPAID);
+        BigDecimal totalUnpaid = fineRepository.sumAmountByMemberIdAndStatus(member.getId(), FineStatus.UNPAID);
+        long count = fineRepository.countByMemberIdAndStatus(member.getId(), FineStatus.UNPAID);
 
         return MemberUnpaidFineResponseDto.builder()
                 .memberId(member.getId())
@@ -208,5 +235,73 @@ public class FineServiceImpl implements FineService {
                 .totalUnpaidAmount(totalUnpaid)
                 .unpaidFinesCount(count)
                 .build();
+    }
+
+    /**
+     * Ensures a ROLE_MEMBER caller can only view fines belonging to their own Member record.
+     * Fails closed if no linked Member profile exists.
+     */
+    private void enforceFineOwnership(Fine fine) {
+        Optional<String> memberEmailOpt = getAuthenticatedMemberEmail();
+        if (memberEmailOpt.isEmpty()) {
+            return;
+        }
+        Member callerMember = memberRepository.findByEmail(memberEmailOpt.get())
+                .orElseThrow(() -> new AccessDeniedException("Access denied: No member profile is linked to your account."));
+        Long ownerMemberId = (fine.getBorrowing() != null && fine.getBorrowing().getMember() != null)
+                ? fine.getBorrowing().getMember().getId()
+                : null;
+        if (!callerMember.getId().equals(ownerMemberId)) {
+            log.warn("IDOR attempt blocked on fineId={}: caller email={} (memberId={}) does not own fine",
+                    fine.getId(), memberEmailOpt.get(), callerMember.getId());
+            throw new AccessDeniedException("Access denied: You can only view your own fine records.");
+        }
+    }
+
+    /**
+     * Ensures a ROLE_MEMBER caller can only query fines for their own memberId.
+     * Fails closed (403 Forbidden) instead of falling back to the requested memberId.
+     */
+    private void enforceRequestedMemberOwnership(Long requestedMemberId) {
+        Optional<String> memberEmailOpt = getAuthenticatedMemberEmail();
+        if (memberEmailOpt.isEmpty()) {
+            return;
+        }
+        Member callerMember = memberRepository.findByEmail(memberEmailOpt.get())
+                .orElseThrow(() -> new AccessDeniedException("Access denied: No member profile is linked to your account."));
+        if (!callerMember.getId().equals(requestedMemberId)) {
+            log.warn("IDOR attempt blocked on member fines query: caller email={} (memberId={}) requested memberId={}",
+                    memberEmailOpt.get(), callerMember.getId(), requestedMemberId);
+            throw new AccessDeniedException("Access denied: You can only view your own fine records.");
+        }
+    }
+
+    /**
+     * Returns the authenticated caller's email if the caller is a non-admin ROLE_MEMBER.
+     * Returns Optional.empty() for ADMIN callers or unauthenticated unit-test invocations.
+     */
+    private Optional<String> getAuthenticatedMemberEmail() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated()) {
+            return Optional.empty();
+        }
+        boolean isAdmin = auth.getAuthorities().stream()
+                .anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
+        if (isAdmin) {
+            return Optional.empty();
+        }
+        boolean isMember = auth.getAuthorities().stream()
+                .anyMatch(a -> "ROLE_MEMBER".equals(a.getAuthority()));
+        if (!isMember) {
+            return Optional.empty();
+        }
+        Object principal = auth.getPrincipal();
+        if (principal instanceof User user) {
+            return Optional.ofNullable(user.getEmail());
+        }
+        if (principal instanceof UserDetails userDetails) {
+            return Optional.ofNullable(userDetails.getUsername());
+        }
+        return Optional.ofNullable(auth.getName());
     }
 }

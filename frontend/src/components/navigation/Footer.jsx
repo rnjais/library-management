@@ -16,15 +16,12 @@ const Footer = () => {
       <Container maxWidth="lg">
         <Stack
           direction={{ xs: 'column', sm: 'row' }}
-          justifyContent="space-between"
+          justifyContent="center"
           alignItems="center"
           spacing={1}
         >
           <Typography variant="body2" color="text.secondary">
             &copy; {new Date().getFullYear()} Library Management System. All rights reserved.
-          </Typography>
-          <Typography variant="caption" color="text.secondary">
-            Built with React, Vite, Material UI &amp; Spring Boot 4
           </Typography>
         </Stack>
       </Container>

@@ -7,13 +7,13 @@ import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
 
 import javax.crypto.SecretKey;
-import java.nio.charset.StandardCharsets;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
@@ -26,10 +26,21 @@ import java.util.function.Function;
 @Service
 public class JwtService {
 
+    private static final int MIN_SECRET_KEY_BYTES = 32; // 256 bits minimum for HMAC-SHA256
+
     private final JwtProperties jwtProperties;
+    private volatile SecretKey cachedSigningKey;
 
     public JwtService(JwtProperties jwtProperties) {
         this.jwtProperties = jwtProperties;
+    }
+
+    /**
+     * Validates and caches the HMAC signing key once at application startup (fail-fast).
+     */
+    @PostConstruct
+    public void initSigningKey() {
+        this.cachedSigningKey = buildValidatedSigningKey();
     }
 
     /**
@@ -93,12 +104,12 @@ public class JwtService {
     }
 
     /**
-     * Validates whether a token belongs to the given user and has not expired.
+     * Validates whether a token belongs to the given user and has not expired (single parse).
      */
     public boolean isTokenValid(String token, UserDetails userDetails) {
         try {
-            final String username = extractUsername(token);
-            return username != null && username.equalsIgnoreCase(userDetails.getUsername()) && !isTokenExpired(token);
+            Claims claims = extractAllClaims(token);
+            return isTokenValid(claims, userDetails);
         } catch (JwtException | IllegalArgumentException e) {
             log.warn("Invalid JWT token: {}", e.getMessage());
             return false;
@@ -106,11 +117,33 @@ public class JwtService {
     }
 
     /**
+     * Validates pre-parsed JWT claims against the loaded user details without re-parsing the token.
+     */
+    public boolean isTokenValid(Claims claims, UserDetails userDetails) {
+        if (claims == null || userDetails == null) {
+            return false;
+        }
+        String username = claims.getSubject();
+        return username != null
+                && username.equalsIgnoreCase(userDetails.getUsername())
+                && !isClaimsExpired(claims);
+    }
+
+    /**
      * Checks if the token has passed its expiration timestamp.
+     * Fails closed (returns true) when expiration claim is missing or unparseable.
      */
     public boolean isTokenExpired(String token) {
-        Date expiration = extractClaim(token, Claims::getExpiration);
-        return expiration != null && expiration.before(new Date());
+        Claims claims = extractAllClaims(token);
+        return isClaimsExpired(claims);
+    }
+
+    private boolean isClaimsExpired(Claims claims) {
+        if (claims == null) {
+            return true;
+        }
+        Date expiration = claims.getExpiration();
+        return expiration == null || expiration.before(new Date());
     }
 
     /**
@@ -130,14 +163,33 @@ public class JwtService {
     }
 
     /**
-     * Resolves the cryptographic signing SecretKey from configured secretKey string.
+     * Returns the cached cryptographic signing key, initializing lazily if constructed outside Spring.
      */
     private SecretKey getSigningKey() {
+        SecretKey key = this.cachedSigningKey;
+        if (key == null) {
+            key = buildValidatedSigningKey();
+            this.cachedSigningKey = key;
+        }
+        return key;
+    }
+
+    /**
+     * Decodes and strictly validates the configured Base64 JWT secret (>= 256 bits).
+     */
+    private SecretKey buildValidatedSigningKey() {
+        String configuredSecret = jwtProperties.getSecretKey();
+        if (configuredSecret == null || configuredSecret.isBlank()) {
+            throw new IllegalStateException("JWT secret key is not configured. Set app.jwt.secret-key / JWT_SECRET_KEY.");
+        }
         byte[] keyBytes;
         try {
-            keyBytes = Decoders.BASE64.decode(jwtProperties.getSecretKey());
+            keyBytes = Decoders.BASE64.decode(configuredSecret.trim());
         } catch (Exception e) {
-            keyBytes = jwtProperties.getSecretKey().getBytes(StandardCharsets.UTF_8);
+            throw new IllegalStateException("JWT secret key must be a valid Base64-encoded string.", e);
+        }
+        if (keyBytes.length < MIN_SECRET_KEY_BYTES) {
+            throw new IllegalStateException("JWT secret key must be at least 256 bits (32 bytes) after Base64 decoding.");
         }
         return Keys.hmacShaKeyFor(keyBytes);
     }

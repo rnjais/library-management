@@ -255,6 +255,27 @@ class MemberControllerTest {
     }
 
     @Test
+    void shouldActivateMemberSuccessfully() throws Exception {
+        MemberResponseDto reactivatedMember = MemberResponseDto.builder()
+                .id(1L)
+                .firstName("John")
+                .lastName("Doe")
+                .email("john.doe@example.com")
+                .phoneNumber("1234567890")
+                .membershipDate(LocalDate.now())
+                .active(true)
+                .build();
+
+        when(memberService.activateMember(1L)).thenReturn(reactivatedMember);
+
+        mockMvc.perform(patch("/api/members/1/activate"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.message").value("Member reactivated successfully"))
+                .andExpect(jsonPath("$.data.active").value(true));
+    }
+
+    @Test
     void shouldRejectInvalidPaginationParameters() throws Exception {
         mockMvc.perform(get("/api/members")
                         .param("page", "-1"))

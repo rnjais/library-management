@@ -21,36 +21,38 @@ import AssessmentIcon from '@mui/icons-material/Assessment'
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
+import LocalLibraryIcon from '@mui/icons-material/LocalLibrary'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { ROUTES } from '../utils/constants'
 import api from '../services/api'
 
+/**
+ * Modern Public Home & Overview Portal
+ */
 const HomePage = () => {
   const navigate = useNavigate()
   const { isAuthenticated, user, isAdmin } = useAuth()
   const [backendStatus, setBackendStatus] = useState({
     checking: true,
     online: false,
-    message: 'Testing connection to Spring Boot backend...',
+    message: 'Checking system status...',
   })
 
   useEffect(() => {
-    // Probe backend OpenAPI specification to verify live connectivity
     const checkBackend = async () => {
       try {
-        const response = await api.get('/books?page=0&size=1')
+        await api.get('/books?page=0&size=1')
         setBackendStatus({
           checking: false,
           online: true,
-          message: 'Connected to Spring Boot 4.1.2 Backend (Port 8080)',
+          message: 'All library services are operational.',
         })
       } catch (err) {
         setBackendStatus({
           checking: false,
           online: false,
-          message:
-            'Backend unreachable. Ensure Spring Boot is running on port 8080 (.\\mvnw.cmd spring-boot:run)',
+          message: 'Library server is currently unreachable. Please try again later.',
         })
       }
     }
@@ -63,142 +65,198 @@ const HomePage = () => {
       title: 'Book Catalog Management',
       description:
         'Explore book titles, check available copies, search by keywords, and filter by categories with pagination and sorting.',
-      icon: <MenuBookIcon sx={{ fontSize: 36, color: 'primary.main' }} />,
+      icon: <MenuBookIcon sx={{ fontSize: 28, color: '#2563eb' }} />,
       actionText: 'Browse Catalog',
       actionPath: ROUTES.BOOKS,
       badge: 'Public & Admin',
+      bgColor: '#eff6ff',
     },
     {
       title: 'Member Administration',
       description:
         'Register new library patrons, manage contact info, track membership status, and monitor loan limits.',
-      icon: <PeopleIcon sx={{ fontSize: 36, color: 'primary.main' }} />,
+      icon: <PeopleIcon sx={{ fontSize: 28, color: '#0284c7' }} />,
       actionText: isAdmin ? 'Manage Members' : 'Member Portal',
       actionPath: isAdmin ? ROUTES.ADMIN_MEMBERS : ROUTES.BOOKS,
       badge: 'Admin Only',
+      bgColor: '#e0f2fe',
     },
     {
       title: 'Borrowing & Returns',
       description:
         'Transactional book check-out and return flows with automated real-time inventory decrement and increment.',
-      icon: <HistoryEduIcon sx={{ fontSize: 36, color: 'primary.main' }} />,
+      icon: <HistoryEduIcon sx={{ fontSize: 28, color: '#d97706' }} />,
       actionText: 'View Loans',
       actionPath: isAuthenticated ? ROUTES.MY_BORROWINGS : ROUTES.LOGIN,
-      badge: 'Member & Admin',
+      badge: 'Circulation',
+      bgColor: '#fef3c7',
     },
     {
       title: 'Automated Fine Assessment',
       description:
         'Overdue loans automatically accrue fines at ₹5.00/day. Track unpaid balances and process instant digital payments.',
-      icon: <MonetizationOnIcon sx={{ fontSize: 36, color: 'primary.main' }} />,
+      icon: <MonetizationOnIcon sx={{ fontSize: 28, color: '#dc2626' }} />,
       actionText: 'View Fines',
       actionPath: isAuthenticated ? ROUTES.MY_FINES : ROUTES.LOGIN,
       badge: '₹5.00 / day',
+      bgColor: '#fee2e2',
     },
     {
-      title: 'Stateless JWT Security',
+      title: 'Role-Based Access Control',
       description:
-        'Role-Based Access Control (RBAC) powered by Spring Security 6 with HMAC-SHA256 tokens and BCrypt encryption.',
-      icon: <SecurityIcon sx={{ fontSize: 36, color: 'primary.main' }} />,
-      actionText: isAuthenticated ? 'Profile' : 'Log In',
-      actionPath: isAuthenticated ? ROUTES.HOME : ROUTES.LOGIN,
-      badge: 'RBAC Security',
+        'Secure authentication and role-based permissions protecting member accounts and administrative operations.',
+      icon: <SecurityIcon sx={{ fontSize: 28, color: '#16a34a' }} />,
+      actionText: isAuthenticated ? 'Dashboard' : 'Sign In',
+      actionPath: isAuthenticated ? (isAdmin ? ROUTES.ADMIN_DASHBOARD : ROUTES.BOOKS) : ROUTES.LOGIN,
+      badge: 'Security',
+      bgColor: '#dcfce7',
     },
     {
       title: 'Reports & Analytics',
       description:
         'Comprehensive dashboards featuring book inventory stats, patronage numbers, active loan volume, and fine revenues.',
-      icon: <AssessmentIcon sx={{ fontSize: 36, color: 'primary.main' }} />,
+      icon: <AssessmentIcon sx={{ fontSize: 28, color: '#7c3aed' }} />,
       actionText: 'View Reports',
       actionPath: isAdmin ? ROUTES.ADMIN_REPORTS : ROUTES.BOOKS,
-      badge: 'Admin Reports',
+      badge: 'Analytics',
+      bgColor: '#f3e8ff',
     },
   ]
 
   return (
     <Box>
-      {/* Hero Welcome Banner */}
+      {/* Hero Welcome Banner (Inspired by Image 1 & 2) */}
       <Paper
         elevation={0}
         sx={{
-          p: { xs: 3, md: 5 },
-          mb: 4,
-          borderRadius: 3,
-          background: 'linear-gradient(135deg, #1e3a8a 0%, #0d9488 100%)',
+          p: { xs: 3.5, md: 5.5 },
+          mb: 4.5,
+          borderRadius: 4,
+          background: 'linear-gradient(135deg, #090d16 0%, #172554 45%, #2563eb 100%)',
           color: '#ffffff',
+          boxShadow: '0 20px 40px -15px rgba(15, 23, 42, 0.25)',
         }}
       >
-        <Grid container spacing={3} alignItems="center">
+        <Grid container spacing={4} alignItems="center">
           <Grid item xs={12} md={8}>
-            <Chip
-              label="Spring Boot 4 + React 18 Architecture"
-              size="small"
-              sx={{
-                bgcolor: 'rgba(255,255,255,0.2)',
-                color: '#ffffff',
-                fontWeight: 600,
-                mb: 2,
-              }}
-            />
-            <Typography variant="h4" component="h1" gutterBottom sx={{ fontWeight: 800 }}>
+            <Stack direction="row" alignItems="center" spacing={1.5} mb={2}>
+              <Box
+                sx={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: 2.5,
+                  bgcolor: '#2563eb',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <LocalLibraryIcon sx={{ fontSize: 22, color: '#ffffff' }} />
+              </Box>
+              <Chip
+                label="Enterprise Library System"
+                size="small"
+                sx={{
+                  bgcolor: 'rgba(255,255,255,0.16)',
+                  color: '#ffffff',
+                  fontWeight: 700,
+                  fontSize: '0.72rem',
+                }}
+              />
+            </Stack>
+
+            <Typography variant="h3" component="h1" gutterBottom sx={{ fontWeight: 800, letterSpacing: '-0.02em', lineHeight: 1.2 }}>
               Library Management System
             </Typography>
-            <Typography variant="body1" sx={{ opacity: 0.9, maxWidth: 640, mb: 3 }}>
+            <Typography variant="body1" sx={{ opacity: 0.9, maxWidth: 620, mb: 3.5, lineHeight: 1.6, fontSize: '1rem' }}>
               {isAuthenticated
-                ? `Welcome back, ${user?.name || user?.email}! You are currently authenticated with role ${user?.role}. Explore the catalog, check your active book borrowings, or manage library operations.`
-                : 'Welcome to the modern Library Management portal. Browse book collections, manage member records, check out books, track overdue loan penalties, and monitor real-time library analytics.'}
+                ? `Welcome back, ${user?.name || user?.email}! You are currently authenticated as ${user?.role}. Explore the catalog, manage your active loans, or oversee library circulation.`
+                : 'Welcome to the modern Library Management portal. Browse book collections, check out titles, track loan deadlines, and monitor real-time library analytics.'}
             </Typography>
+
             <Stack direction="row" spacing={2} flexWrap="wrap">
               <Button
                 variant="contained"
                 size="large"
                 sx={{
                   bgcolor: '#ffffff',
-                  color: 'primary.main',
+                  color: '#172554',
                   fontWeight: 700,
+                  borderRadius: 2.5,
+                  px: 3,
+                  boxShadow: '0 4px 14px rgba(0,0,0,0.1)',
                   '&:hover': { bgcolor: '#f1f5f9' },
                 }}
                 onClick={() => navigate(ROUTES.BOOKS)}
               >
                 Browse Catalog
               </Button>
-              {!isAuthenticated && (
+              {!isAuthenticated ? (
                 <Button
                   variant="outlined"
                   size="large"
                   sx={{
                     color: '#ffffff',
-                    borderColor: 'rgba(255,255,255,0.6)',
+                    borderColor: 'rgba(255,255,255,0.4)',
                     fontWeight: 700,
-                    '&:hover': { borderColor: '#ffffff', bgcolor: 'rgba(255,255,255,0.1)' },
+                    borderRadius: 2.5,
+                    px: 3,
+                    '&:hover': { borderColor: '#ffffff', bgcolor: 'rgba(255,255,255,0.08)' },
                   }}
                   onClick={() => navigate(ROUTES.LOGIN)}
                 >
                   Sign In
                 </Button>
+              ) : (
+                isAdmin && (
+                  <Button
+                    variant="outlined"
+                    size="large"
+                    sx={{
+                      color: '#ffffff',
+                      borderColor: 'rgba(255,255,255,0.4)',
+                      fontWeight: 700,
+                      borderRadius: 2.5,
+                      px: 3,
+                      '&:hover': { borderColor: '#ffffff', bgcolor: 'rgba(255,255,255,0.08)' },
+                    }}
+                    onClick={() => navigate(ROUTES.ADMIN_DASHBOARD)}
+                  >
+                    Admin Dashboard
+                  </Button>
+                )
               )}
             </Stack>
           </Grid>
+
+          {/* System Health Status Card */}
           <Grid item xs={12} md={4}>
-            {/* Live Backend Connectivity Card */}
-            <Card sx={{ bgcolor: 'rgba(255,255,255,0.12)', backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.2)', color: '#ffffff' }}>
-              <CardContent>
-                <Typography variant="subtitle2" sx={{ opacity: 0.8, mb: 1, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  Backend System Health
+            <Card
+              sx={{
+                bgcolor: 'rgba(255,255,255,0.12)',
+                backdropFilter: 'blur(12px)',
+                border: '1px solid rgba(255,255,255,0.22)',
+                borderRadius: 3.5,
+                color: '#ffffff',
+              }}
+            >
+              <CardContent sx={{ p: 3 }}>
+                <Typography variant="caption" sx={{ opacity: 0.8, textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700 }}>
+                  System Health
                 </Typography>
-                <Stack direction="row" alignItems="center" spacing={1.5} my={1}>
+                <Stack direction="row" alignItems="center" spacing={1.5} my={1.5}>
                   {backendStatus.checking ? (
                     <CircularProgress size={20} sx={{ color: '#ffffff' }} />
                   ) : backendStatus.online ? (
-                    <CheckCircleOutlineIcon sx={{ color: '#4ade80', fontSize: 24 }} />
+                    <CheckCircleOutlineIcon sx={{ color: '#4ade80', fontSize: 26 }} />
                   ) : (
-                    <ErrorOutlineIcon sx={{ color: '#f87171', fontSize: 24 }} />
+                    <ErrorOutlineIcon sx={{ color: '#f87171', fontSize: 26 }} />
                   )}
-                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                    {backendStatus.online ? 'Online & Healthy' : backendStatus.checking ? 'Checking...' : 'Offline'}
+                  <Typography variant="h6" sx={{ fontWeight: 800 }}>
+                    {backendStatus.online ? 'Online & Healthy' : backendStatus.checking ? 'Checking Status...' : 'Offline'}
                   </Typography>
                 </Stack>
-                <Typography variant="caption" sx={{ opacity: 0.85, display: 'block' }}>
+                <Typography variant="body2" sx={{ opacity: 0.85, fontSize: '0.8125rem' }}>
                   {backendStatus.message}
                 </Typography>
               </CardContent>
@@ -207,13 +265,13 @@ const HomePage = () => {
         </Grid>
       </Paper>
 
-      {/* Feature Grid */}
-      <Box mb={2}>
-        <Typography variant="h5" component="h2" gutterBottom sx={{ fontWeight: 700 }}>
+      {/* Feature Modules Grid */}
+      <Box mb={3}>
+        <Typography variant="h5" component="h2" gutterBottom sx={{ fontWeight: 800, color: '#0f172a' }}>
           System Capabilities
         </Typography>
-        <Typography variant="body2" color="text.secondary" mb={3}>
-          Explore the modular features connecting this React frontend to the Spring Boot REST API.
+        <Typography variant="body2" color="text.secondary">
+          Explore the core modules for managing books, members, borrowings, fines, and reports.
         </Typography>
       </Box>
 
@@ -225,30 +283,52 @@ const HomePage = () => {
                 height: '100%',
                 display: 'flex',
                 flexDirection: 'column',
-                transition: 'transform 0.2s, box-shadow 0.2s',
+                borderRadius: 3.5,
+                border: '1px solid #e2e8f0',
+                transition: 'transform 180ms ease, box-shadow 180ms ease',
                 '&:hover': {
                   transform: 'translateY(-4px)',
-                  boxShadow: '0 8px 16px rgba(0,0,0,0.08)',
+                  boxShadow: '0 12px 24px -4px rgba(15, 23, 42, 0.08)',
+                  borderColor: '#cbd5e1',
                 },
               }}
             >
-              <CardContent sx={{ flexGrow: 1 }}>
+              <CardContent sx={{ flexGrow: 1, p: 3 }}>
                 <Stack direction="row" justifyContent="space-between" alignItems="flex-start" mb={2}>
-                  {feature.icon}
-                  <Chip label={feature.badge} size="small" variant="outlined" />
+                  <Box
+                    sx={{
+                      width: 46,
+                      height: 46,
+                      borderRadius: 2.5,
+                      bgcolor: feature.bgColor,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    {feature.icon}
+                  </Box>
+                  <Chip
+                    label={feature.badge}
+                    size="small"
+                    sx={{ fontWeight: 700, fontSize: '0.6875rem', borderRadius: 2 }}
+                  />
                 </Stack>
-                <Typography variant="h6" component="h3" gutterBottom sx={{ fontWeight: 600 }}>
+
+                <Typography variant="h6" component="h3" gutterBottom sx={{ fontWeight: 700, color: '#0f172a' }}>
                   {feature.title}
                 </Typography>
-                <Typography variant="body2" color="text.secondary">
+                <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.55 }}>
                   {feature.description}
                 </Typography>
               </CardContent>
-              <CardActions sx={{ p: 2, pt: 0 }}>
+
+              <CardActions sx={{ p: 3, pt: 0 }}>
                 <Button
                   size="small"
-                  endIcon={<ArrowForwardIcon />}
+                  endIcon={<ArrowForwardIcon fontSize="small" />}
                   onClick={() => navigate(feature.actionPath)}
+                  sx={{ fontWeight: 700, color: '#2563eb' }}
                 >
                   {feature.actionText}
                 </Button>

@@ -2,10 +2,12 @@ package com.library_management.repository;
 
 import com.library_management.entity.Fine;
 import com.library_management.entity.FineStatus;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -32,6 +34,17 @@ public interface FineRepository extends JpaRepository<Fine, Long> {
     @Override
     @EntityGraph(attributePaths = {"borrowing", "borrowing.book", "borrowing.member"})
     Optional<Fine> findById(Long id);
+
+    /**
+     * Fetches a fine record with a PESSIMISTIC_WRITE lock (SELECT ... FOR UPDATE)
+     * to serialize concurrent fine settlement attempts and prevent duplicate receipts.
+     *
+     * @param id The fine ID.
+     * @return Optional containing the locked Fine with borrowing/book/member fetched.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT f FROM Fine f JOIN FETCH f.borrowing b JOIN FETCH b.book JOIN FETCH b.member WHERE f.id = :id")
+    Optional<Fine> findByIdWithPessimisticLock(@Param("id") Long id);
 
     /**
      * Retrieves all fines with pagination, eagerly loading associated borrowing relations.
@@ -143,7 +156,26 @@ public interface FineRepository extends JpaRepository<Fine, Long> {
      *
      * @param memberId The member ID.
      */
-    @Modifying
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("DELETE FROM Fine f WHERE f.borrowing.id IN (SELECT b.id FROM Borrowing b WHERE b.member.id = :memberId)")
     void deleteByMemberId(@Param("memberId") Long memberId);
+
+    /**
+     * Counts fines with the given status linked to loans for a specific book.
+     *
+     * @param bookId The book ID.
+     * @param status The fine payment status.
+     * @return Count of matching fine records.
+     */
+    @Query("SELECT COUNT(f) FROM Fine f WHERE f.borrowing.book.id = :bookId AND f.status = :status")
+    long countByBookIdAndStatus(@Param("bookId") Long bookId, @Param("status") FineStatus status);
+
+    /**
+     * Deletes all fine records for loans associated with a book.
+     *
+     * @param bookId The book ID.
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("DELETE FROM Fine f WHERE f.borrowing.id IN (SELECT b.id FROM Borrowing b WHERE b.book.id = :bookId)")
+    void deleteByBookId(@Param("bookId") Long bookId);
 }

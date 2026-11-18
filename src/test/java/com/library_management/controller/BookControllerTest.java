@@ -190,4 +190,20 @@ class BookControllerTest {
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.status").value(404));
     }
+
+    @Test
+    void shouldReturn400WhenSortByFieldIsInvalid() throws Exception {
+        mockMvc.perform(get("/api/books").param("sortBy", "nonExistentColumn"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("Invalid sortBy field")));
+    }
+
+    @Test
+    void shouldReturn400WhenSortDirectionIsInvalid() throws Exception {
+        mockMvc.perform(get("/api/books").param("direction", "SIDEWAYS"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("Invalid sort direction")));
+    }
 }

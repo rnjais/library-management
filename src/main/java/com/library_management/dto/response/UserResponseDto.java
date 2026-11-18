@@ -21,6 +21,7 @@ import java.time.LocalDateTime;
 public class UserResponseDto {
 
     private Long id;
+    private Long memberId;
     private String name;
     private String email;
     private Role role;
@@ -36,11 +37,24 @@ public class UserResponseDto {
      * @return Safe UserResponseDto without password fields.
      */
     public static UserResponseDto fromEntity(User user) {
+        return fromEntity(user, null);
+    }
+
+    /**
+     * Factory mapping method to safely convert a JPA User entity into a UserResponseDto
+     * with its linked library Member ID.
+     *
+     * @param user The User entity.
+     * @param memberId The linked Member entity ID (if applicable).
+     * @return Safe UserResponseDto without password fields.
+     */
+    public static UserResponseDto fromEntity(User user, Long memberId) {
         if (user == null) {
             return null;
         }
         return UserResponseDto.builder()
                 .id(user.getId())
+                .memberId(memberId)
                 .name(user.getName())
                 .email(user.getEmail())
                 .role(user.getRole())

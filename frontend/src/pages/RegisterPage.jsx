@@ -12,24 +12,30 @@ import {
   CircularProgress,
   Stack,
   Divider,
+  Grid,
   Link as MuiLink,
 } from '@mui/material'
-import PersonAddIcon from '@mui/icons-material/PersonAdd'
+import LocalLibraryIcon from '@mui/icons-material/LocalLibrary'
+import PersonAddAlt1OutlinedIcon from '@mui/icons-material/PersonAddAlt1Outlined'
 import PersonOutlineIcon from '@mui/icons-material/PersonOutline'
 import EmailOutlinedIcon from '@mui/icons-material/EmailOutlined'
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined'
-import Visibility from '@mui/icons-material/Visibility'
-import VisibilityOff from '@mui/icons-material/VisibilityOff'
+import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined'
+import VisibilityOffOutlinedIcon from '@mui/icons-material/VisibilityOffOutlined'
+import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import authService from '../services/authService'
 import { ROUTES } from '../utils/constants'
 
+/**
+ * Modern Split-Screen Registration Layout (Matching Reference Image 2)
+ */
 const RegisterPage = () => {
   const navigate = useNavigate()
   const { login } = useAuth()
 
-  // Form State
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -43,7 +49,6 @@ const RegisterPage = () => {
   const [successMessage, setSuccessMessage] = useState(null)
   const [loading, setLoading] = useState(false)
 
-  // Client-side validation function
   const validateForm = () => {
     const errors = {}
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -52,24 +57,18 @@ const RegisterPage = () => {
       errors.name = 'Full name is required'
     } else if (formData.name.trim().length < 2) {
       errors.name = 'Name must be at least 2 characters'
-    } else if (formData.name.trim().length > 150) {
-      errors.name = 'Name cannot exceed 150 characters'
     }
 
     if (!formData.email.trim()) {
       errors.email = 'Email address is required'
     } else if (!emailRegex.test(formData.email.trim())) {
-      errors.email = 'Please enter a valid email address (e.g. user@example.com)'
-    } else if (formData.email.trim().length > 150) {
-      errors.email = 'Email cannot exceed 150 characters'
+      errors.email = 'Please enter a valid email address'
     }
 
     if (!formData.password) {
       errors.password = 'Password is required'
     } else if (formData.password.length < 6) {
       errors.password = 'Password must be at least 6 characters'
-    } else if (formData.password.length > 50) {
-      errors.password = 'Password cannot exceed 50 characters'
     }
 
     if (!formData.confirmPassword) {
@@ -86,7 +85,6 @@ const RegisterPage = () => {
     const { name, value } = e.target
     setFormData((prev) => ({ ...prev, [name]: value }))
 
-    // Clear field-specific error as user types
     if (fieldErrors[name]) {
       setFieldErrors((prev) => ({ ...prev, [name]: '' }))
     }
@@ -107,7 +105,6 @@ const RegisterPage = () => {
     setLoading(true)
 
     try {
-      // 1. Submit registration payload matching backend RegisterRequestDto: { name, email, password }
       const registrationPayload = {
         name: formData.name.trim(),
         email: formData.email.trim().toLowerCase(),
@@ -117,7 +114,6 @@ const RegisterPage = () => {
       await authService.register(registrationPayload)
       setSuccessMessage('Registration successful! Signing you in...')
 
-      // 2. Automatically log user in upon successful account creation
       try {
         const authData = await authService.login({
           email: registrationPayload.email,
@@ -126,7 +122,6 @@ const RegisterPage = () => {
         login(authData.token, authData.user)
         navigate(ROUTES.BOOKS, { replace: true })
       } catch (autoLoginErr) {
-        // Fallback: Navigate to /login with prefilled email and success message
         navigate(ROUTES.LOGIN, {
           replace: true,
           state: {
@@ -136,7 +131,6 @@ const RegisterPage = () => {
         })
       }
     } catch (err) {
-      // Capture 409 Conflict (Duplicate email) or 400 validation errors
       if (err.validationErrors && Object.keys(err.validationErrors).length > 0) {
         setFieldErrors(err.validationErrors)
       } else {
@@ -148,207 +142,304 @@ const RegisterPage = () => {
   }
 
   return (
-    <Container maxWidth="xs" sx={{ py: 6 }}>
+    <Container maxWidth="lg" sx={{ py: { xs: 3, md: 6 }, display: 'flex', alignItems: 'center', minHeight: '82vh' }}>
       <Paper
-        elevation={3}
+        elevation={0}
         sx={{
-          p: { xs: 3, sm: 4 },
-          borderRadius: 2,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
+          width: '100%',
+          borderRadius: 4,
+          border: '1px solid #e2e8f0',
+          overflow: 'hidden',
+          bgcolor: '#ffffff',
+          boxShadow: '0 20px 40px -15px rgba(15, 23, 42, 0.08)',
         }}
       >
-        {/* Header Icon */}
-        <Box
-          sx={{
-            width: 48,
-            height: 48,
-            borderRadius: '50%',
-            bgcolor: 'secondary.light',
-            color: 'secondary.contrastText',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            mb: 1.5,
-          }}
-        >
-          <PersonAddIcon fontSize="medium" />
-        </Box>
+        <Grid container alignItems="stretch">
+          {/* Left Column: Registration Form */}
+          <Grid item xs={12} md={6} sx={{ p: { xs: 3, sm: 6, lg: 7 } }}>
+            <Box sx={{ mb: 4 }}>
+              <Stack direction="row" alignItems="center" spacing={1.5} mb={3}>
+                <Box
+                  sx={{
+                    width: 38,
+                    height: 38,
+                    borderRadius: 2.5,
+                    bgcolor: '#2563eb',
+                    color: '#ffffff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <LocalLibraryIcon sx={{ fontSize: 20 }} />
+                </Box>
+                <Typography variant="h6" fontWeight={800} color="#0f172a">
+                  LibraryMS
+                </Typography>
+              </Stack>
 
-        <Typography variant="h5" component="h1" fontWeight={700} gutterBottom>
-          Create Account
-        </Typography>
+              <Typography variant="h4" component="h1" sx={{ fontWeight: 800, color: '#0f172a', letterSpacing: '-0.02em', mb: 1 }}>
+                Create Account
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Register as a member to start borrowing books from the catalog.
+              </Typography>
+            </Box>
 
-        <Typography variant="body2" color="text.secondary" textAlign="center" sx={{ mb: 3 }}>
-          Join the Library to borrow books, track loans, and manage renewals.
-        </Typography>
+            {successMessage && (
+              <Alert severity="success" sx={{ mb: 3, borderRadius: 2.5 }}>
+                {successMessage}
+              </Alert>
+            )}
 
-        {/* Global Error Banner */}
-        {apiError && (
-          <Alert severity="error" sx={{ width: '100%', mb: 2 }}>
-            {apiError}
-          </Alert>
-        )}
+            {apiError && (
+              <Alert severity="error" sx={{ mb: 3, borderRadius: 2.5 }}>
+                {apiError}
+              </Alert>
+            )}
 
-        {/* Success Banner */}
-        {successMessage && (
-          <Alert severity="success" sx={{ width: '100%', mb: 2 }}>
-            {successMessage}
-          </Alert>
-        )}
+            <Box component="form" onSubmit={handleSubmit} noValidate>
+              <Stack spacing={2.25}>
+                <Box>
+                  <Typography variant="caption" sx={{ fontWeight: 600, color: '#334155', mb: 0.75, display: 'block' }}>
+                    Full Name
+                  </Typography>
+                  <TextField
+                    fullWidth
+                    id="name"
+                    name="name"
+                    placeholder="John Doe"
+                    value={formData.name}
+                    onChange={handleChange}
+                    error={Boolean(fieldErrors.name)}
+                    helperText={fieldErrors.name}
+                    disabled={loading}
+                    autoComplete="name"
+                    autoFocus
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <PersonOutlineIcon sx={{ color: '#94a3b8', fontSize: 20 }} />
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                </Box>
 
-        {/* Registration Form */}
-        <Box component="form" onSubmit={handleSubmit} noValidate sx={{ width: '100%' }}>
-          <Stack spacing={2.5}>
-            {/* Full Name */}
-            <TextField
-              required
-              fullWidth
-              id="name"
-              name="name"
-              label="Full Name"
-              autoComplete="name"
-              autoFocus
-              value={formData.name}
-              onChange={handleChange}
-              error={Boolean(fieldErrors.name)}
-              helperText={fieldErrors.name}
-              disabled={loading}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <PersonOutlineIcon fontSize="small" color="action" />
-                  </InputAdornment>
-                ),
-              }}
-            />
+                <Box>
+                  <Typography variant="caption" sx={{ fontWeight: 600, color: '#334155', mb: 0.75, display: 'block' }}>
+                    Email Address
+                  </Typography>
+                  <TextField
+                    fullWidth
+                    id="email"
+                    name="email"
+                    type="email"
+                    placeholder="Enter your email"
+                    value={formData.email}
+                    onChange={handleChange}
+                    error={Boolean(fieldErrors.email)}
+                    helperText={fieldErrors.email}
+                    disabled={loading}
+                    autoComplete="email"
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <EmailOutlinedIcon sx={{ color: '#94a3b8', fontSize: 20 }} />
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                </Box>
 
-            {/* Email Address */}
-            <TextField
-              required
-              fullWidth
-              id="email"
-              name="email"
-              label="Email Address"
-              autoComplete="email"
-              value={formData.email}
-              onChange={handleChange}
-              error={Boolean(fieldErrors.email)}
-              helperText={fieldErrors.email}
-              disabled={loading}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <EmailOutlinedIcon fontSize="small" color="action" />
-                  </InputAdornment>
-                ),
-              }}
-            />
+                <Box>
+                  <Typography variant="caption" sx={{ fontWeight: 600, color: '#334155', mb: 0.75, display: 'block' }}>
+                    Password
+                  </Typography>
+                  <TextField
+                    fullWidth
+                    id="password"
+                    name="password"
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="Minimum 6 characters"
+                    value={formData.password}
+                    onChange={handleChange}
+                    error={Boolean(fieldErrors.password)}
+                    helperText={fieldErrors.password}
+                    disabled={loading}
+                    autoComplete="new-password"
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <LockOutlinedIcon sx={{ color: '#94a3b8', fontSize: 20 }} />
+                        </InputAdornment>
+                      ),
+                      endAdornment: (
+                        <InputAdornment position="end">
+                          <IconButton
+                            aria-label="toggle password visibility"
+                            onClick={() => setShowPassword(!showPassword)}
+                            edge="end"
+                            size="small"
+                            sx={{ color: '#64748b' }}
+                          >
+                            {showPassword ? <VisibilityOffOutlinedIcon fontSize="small" /> : <VisibilityOutlinedIcon fontSize="small" />}
+                          </IconButton>
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                </Box>
 
-            {/* Password */}
-            <TextField
-              required
-              fullWidth
-              id="password"
-              name="password"
-              label="Password (min. 6 characters)"
-              type={showPassword ? 'text' : 'password'}
-              autoComplete="new-password"
-              value={formData.password}
-              onChange={handleChange}
-              error={Boolean(fieldErrors.password)}
-              helperText={fieldErrors.password}
-              disabled={loading}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <LockOutlinedIcon fontSize="small" color="action" />
-                  </InputAdornment>
-                ),
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <IconButton
-                      aria-label="toggle password visibility"
-                      onClick={() => setShowPassword((prev) => !prev)}
-                      edge="end"
-                      size="small"
-                      disabled={loading}
-                    >
-                      {showPassword ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}
-                    </IconButton>
-                  </InputAdornment>
-                ),
-              }}
-            />
+                <Box>
+                  <Typography variant="caption" sx={{ fontWeight: 600, color: '#334155', mb: 0.75, display: 'block' }}>
+                    Confirm Password
+                  </Typography>
+                  <TextField
+                    fullWidth
+                    id="confirmPassword"
+                    name="confirmPassword"
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    placeholder="Re-enter password"
+                    value={formData.confirmPassword}
+                    onChange={handleChange}
+                    error={Boolean(fieldErrors.confirmPassword)}
+                    helperText={fieldErrors.confirmPassword}
+                    disabled={loading}
+                    autoComplete="new-password"
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <LockOutlinedIcon sx={{ color: '#94a3b8', fontSize: 20 }} />
+                        </InputAdornment>
+                      ),
+                      endAdornment: (
+                        <InputAdornment position="end">
+                          <IconButton
+                            aria-label="toggle confirm password visibility"
+                            onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                            edge="end"
+                            size="small"
+                            sx={{ color: '#64748b' }}
+                          >
+                            {showConfirmPassword ? <VisibilityOffOutlinedIcon fontSize="small" /> : <VisibilityOutlinedIcon fontSize="small" />}
+                          </IconButton>
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                </Box>
 
-            {/* Confirm Password */}
-            <TextField
-              required
-              fullWidth
-              id="confirmPassword"
-              name="confirmPassword"
-              label="Confirm Password"
-              type={showConfirmPassword ? 'text' : 'password'}
-              autoComplete="new-password"
-              value={formData.confirmPassword}
-              onChange={handleChange}
-              error={Boolean(fieldErrors.confirmPassword)}
-              helperText={fieldErrors.confirmPassword}
-              disabled={loading}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <LockOutlinedIcon fontSize="small" color="action" />
-                  </InputAdornment>
-                ),
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <IconButton
-                      aria-label="toggle confirm password visibility"
-                      onClick={() => setShowConfirmPassword((prev) => !prev)}
-                      edge="end"
-                      size="small"
-                      disabled={loading}
-                    >
-                      {showConfirmPassword ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}
-                    </IconButton>
-                  </InputAdornment>
-                ),
-              }}
-            />
+                <Button
+                  type="submit"
+                  variant="contained"
+                  size="large"
+                  fullWidth
+                  disabled={loading}
+                  endIcon={!loading && <ArrowForwardIcon fontSize="small" />}
+                  sx={{
+                    mt: 1,
+                    py: 1.35,
+                    bgcolor: '#2563eb',
+                    color: '#ffffff',
+                    fontWeight: 700,
+                    fontSize: '0.9375rem',
+                    borderRadius: 3,
+                    boxShadow: '0 4px 14px rgba(37, 99, 235, 0.35)',
+                    '&:hover': { bgcolor: '#1d4ed8' },
+                  }}
+                >
+                  {loading ? <CircularProgress size={24} color="inherit" /> : 'Create Account'}
+                </Button>
+              </Stack>
+            </Box>
 
-            {/* Submit Button */}
-            <Button
-              type="submit"
-              fullWidth
-              variant="contained"
-              size="large"
-              color="primary"
-              disabled={loading}
-              startIcon={loading ? <CircularProgress size={20} color="inherit" /> : <PersonAddIcon />}
-              sx={{ py: 1.2, fontWeight: 600 }}
-            >
-              {loading ? 'Creating Account...' : 'Register'}
-            </Button>
-          </Stack>
-        </Box>
+            <Box sx={{ mt: 3.5, textAlign: 'center' }}>
+              <Typography variant="body2" color="text.secondary">
+                Already have an account?{' '}
+                <MuiLink
+                  component={Link}
+                  to={ROUTES.LOGIN}
+                  sx={{
+                    fontWeight: 700,
+                    color: '#2563eb',
+                    '&:hover': { textDecoration: 'underline' },
+                  }}
+                >
+                  Sign in
+                </MuiLink>
+              </Typography>
+            </Box>
+          </Grid>
 
-        <Divider sx={{ width: '100%', my: 3 }} />
-
-        {/* Link back to Sign In */}
-        <Typography variant="body2" color="text.secondary">
-          Already have an account?{' '}
-          <MuiLink
-            component={Link}
-            to={ROUTES.LOGIN}
-            underline="hover"
-            fontWeight={600}
-            color="primary"
+          {/* Right Column: Hero Showcase Card */}
+          <Grid
+            item
+            xs={12}
+            md={6}
+            sx={{
+              display: { xs: 'none', md: 'flex' },
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+              p: 6,
+              background: 'linear-gradient(135deg, #1e3a8a 0%, #2563eb 60%, #3b82f6 100%)',
+              color: '#ffffff',
+            }}
           >
-            Sign in here
-          </MuiLink>
-        </Typography>
+            <Box>
+              <Stack direction="row" alignItems="center" spacing={1} mb={4}>
+                <Box
+                  sx={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: 2,
+                    bgcolor: 'rgba(255, 255, 255, 0.2)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <LocalLibraryIcon sx={{ fontSize: 18, color: '#ffffff' }} />
+                </Box>
+                <Typography variant="subtitle1" fontWeight={800} color="#ffffff">
+                  LibraryMS
+                </Typography>
+              </Stack>
+
+              <Typography variant="h3" sx={{ fontWeight: 800, lineHeight: 1.25, letterSpacing: '-0.02em', mb: 2 }}>
+                Join our Campus Library Patron Network
+              </Typography>
+              <Typography variant="body1" sx={{ color: 'rgba(255, 255, 255, 0.85)', maxWidth: 440, lineHeight: 1.6 }}>
+                Borrow from 200+ curated titles, view loan due dates, track fee settlements, and receive automated return notifications.
+              </Typography>
+
+              <Stack spacing={2} mt={4}>
+                <Stack direction="row" alignItems="center" spacing={1.5}>
+                  <CheckCircleOutlineIcon sx={{ color: '#4ade80', fontSize: 20 }} />
+                  <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.9)', fontWeight: 500 }}>
+                    Instant patron profile creation &amp; catalog access
+                  </Typography>
+                </Stack>
+                <Stack direction="row" alignItems="center" spacing={1.5}>
+                  <CheckCircleOutlineIcon sx={{ color: '#4ade80', fontSize: 20 }} />
+                  <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.9)', fontWeight: 500 }}>
+                    Up to 5 simultaneous active book checkouts
+                  </Typography>
+                </Stack>
+                <Stack direction="row" alignItems="center" spacing={1.5}>
+                  <CheckCircleOutlineIcon sx={{ color: '#4ade80', fontSize: 20 }} />
+                  <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.9)', fontWeight: 500 }}>
+                    Automated due date email reminder notices
+                  </Typography>
+                </Stack>
+              </Stack>
+            </Box>
+
+            <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.65)' }}>
+              &copy; {new Date().getFullYear()} Library Management System. Secure JWT &amp; Spring Boot Architecture.
+            </Typography>
+          </Grid>
+        </Grid>
       </Paper>
     </Container>
   )

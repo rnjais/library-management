@@ -9,16 +9,20 @@ import {
   Grid,
   Alert,
   CircularProgress,
-  MenuItem,
   Typography,
   Box,
+  Autocomplete,
+  Stack,
 } from '@mui/material'
-import CheckCircleIcon from '@mui/icons-material/CheckCircle'
+import BookmarkAddOutlinedIcon from '@mui/icons-material/BookmarkAddOutlined'
 import borrowingService from '../../services/borrowingService'
 import bookService from '../../services/bookService'
 import memberService from '../../services/memberService'
 import { useAuth } from '../../hooks/useAuth'
 
+/**
+ * Searchable Borrow Book Dialog with Autocomplete (Instant lookup across all catalog titles)
+ */
 const BorrowBookDialog = ({ open, onClose, preselectedBook, onBorrowSuccess }) => {
   const { user, isAdmin } = useAuth()
 
@@ -35,20 +39,22 @@ const BorrowBookDialog = ({ open, onClose, preselectedBook, onBorrowSuccess }) =
   const [apiError, setApiError] = useState(null)
   const [submitting, setSubmitting] = useState(false)
 
-  // Fetch available books & active members when dialog opens
   useEffect(() => {
     if (!open) return
 
     const loadOptions = async () => {
       setLoadingOptions(true)
       try {
-        // Fetch books with available copies
-        const booksData = await bookService.getBooks({ size: 100, sortBy: 'title' })
-        setBooksList(booksData.content || [])
+        const booksData = await bookService.getBooks({ size: 1000, sortBy: 'title' })
+        const fetchedBooks = booksData.content || []
+        if (preselectedBook && !fetchedBooks.some((b) => b.id === preselectedBook.id)) {
+          setBooksList([preselectedBook, ...fetchedBooks])
+        } else {
+          setBooksList(fetchedBooks)
+        }
 
-        // If admin, fetch active members list
         if (isAdmin) {
-          const membersData = await memberService.getActiveMembers({ size: 100, sortBy: 'firstName' })
+          const membersData = await memberService.getActiveMembers({ size: 1000, sortBy: 'firstName' })
           setMembersList(membersData.content || [])
         }
       } catch (err) {
@@ -62,7 +68,7 @@ const BorrowBookDialog = ({ open, onClose, preselectedBook, onBorrowSuccess }) =
 
     setFormData({
       bookId: preselectedBook?.id || '',
-      memberId: !isAdmin && user?.id ? user.id : '',
+      memberId: !isAdmin ? (user?.memberId || user?.id || '') : '',
       borrowDays: 14,
     })
     setFieldErrors({})
@@ -77,7 +83,7 @@ const BorrowBookDialog = ({ open, onClose, preselectedBook, onBorrowSuccess }) =
     }
 
     if (!formData.memberId) {
-      errors.memberId = 'Member ID is required'
+      errors.memberId = 'Member is required'
     }
 
     const days = parseInt(formData.borrowDays, 10)
@@ -87,18 +93,6 @@ const BorrowBookDialog = ({ open, onClose, preselectedBook, onBorrowSuccess }) =
 
     setFieldErrors(errors)
     return Object.keys(errors).length === 0
-  }
-
-  const handleChange = (e) => {
-    const { name, value } = e.target
-    setFormData((prev) => ({ ...prev, [name]: value }))
-
-    if (fieldErrors[name]) {
-      setFieldErrors((prev) => ({ ...prev, [name]: '' }))
-    }
-    if (apiError) {
-      setApiError(null)
-    }
   }
 
   const handleSubmit = async (e) => {
@@ -117,7 +111,7 @@ const BorrowBookDialog = ({ open, onClose, preselectedBook, onBorrowSuccess }) =
     try {
       const response = await borrowingService.borrowBook(payload)
       onBorrowSuccess(
-        `Loan issued successfully: "${response.book?.title || 'Book'}" checked out to ${response.member?.fullName || 'Member'}.`
+        `Book checked out successfully: "${response.book?.title || 'Book'}" issued to ${response.member?.fullName || 'Member'}.`
       )
       onClose()
     } catch (err) {
@@ -131,111 +125,153 @@ const BorrowBookDialog = ({ open, onClose, preselectedBook, onBorrowSuccess }) =
     }
   }
 
+  const selectedBook = booksList.find((b) => Number(b.id) === Number(formData.bookId)) || null
+  const selectedMember = membersList.find((m) => Number(m.id) === Number(formData.memberId)) || null
+
   return (
-    <Dialog open={open} onClose={submitting ? undefined : onClose} maxWidth="sm" fullWidth>
-      <DialogTitle fontWeight={700}>
-        Check Out / Issue Book Loan
+    <Dialog open={open} onClose={submitting ? undefined : onClose} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3.5 } }}>
+      <DialogTitle sx={{ px: 3, pt: 3, pb: 1 }}>
+        <Stack direction="row" spacing={1.5} alignItems="center">
+          <Box
+            sx={{
+              width: 38,
+              height: 38,
+              borderRadius: 2,
+              bgcolor: '#eff6ff',
+              color: '#2563eb',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <BookmarkAddOutlinedIcon />
+          </Box>
+          <Box>
+            <Typography variant="h6" fontWeight={800}>
+              {isAdmin ? 'Check Out / Issue Book' : 'Borrow a Book'}
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              {isAdmin ? 'Select catalog book and active patron member' : 'Check out a copy for your account'}
+            </Typography>
+          </Box>
+        </Stack>
       </DialogTitle>
 
-      <DialogContent dividers>
+      <DialogContent sx={{ px: 3, py: 2 }}>
         {apiError && (
-          <Alert severity="error" sx={{ mb: 2 }}>
+          <Alert severity="error" sx={{ mb: 2.5, borderRadius: 2 }}>
             {apiError}
           </Alert>
         )}
 
-        {loadingOptions && (
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Loading catalog books and member roster...
-          </Typography>
-        )}
-
         <Box component="form" id="borrow-form" onSubmit={handleSubmit} noValidate sx={{ mt: 1 }}>
-          <Grid container spacing={2.5}>
-            {/* Book Selector */}
-            <Grid item xs={12}>
-              <TextField
-                select
-                required
-                fullWidth
-                id="bookId"
-                name="bookId"
-                label="Select Book"
-                value={formData.bookId}
-                onChange={handleChange}
-                error={Boolean(fieldErrors.bookId)}
-                helperText={fieldErrors.bookId}
-                disabled={submitting || Boolean(preselectedBook)}
-              >
-                {booksList.map((b) => (
-                  <MenuItem key={b.id} value={b.id} disabled={b.availableCopies <= 0}>
-                    {b.title} by {b.author} ({b.availableCopies} available)
-                  </MenuItem>
-                ))}
-              </TextField>
-            </Grid>
+          <Stack spacing={2.5}>
+            {/* Searchable Book Autocomplete */}
+            <Box>
+              <Typography variant="caption" sx={{ fontWeight: 700, color: '#334155', mb: 0.75, display: 'block' }}>
+                Book Title (Searchable)
+              </Typography>
+              <Autocomplete
+                id="book-select"
+                options={booksList}
+                loading={loadingOptions}
+                getOptionLabel={(option) => `${option.title} — ${option.author} (${option.availableCopies} available)`}
+                isOptionEqualToValue={(option, value) => option.id === value?.id}
+                value={selectedBook}
+                onChange={(event, newValue) => {
+                  setFormData((prev) => ({ ...prev, bookId: newValue ? newValue.id : '' }))
+                  if (fieldErrors.bookId) setFieldErrors((prev) => ({ ...prev, bookId: '' }))
+                }}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    placeholder="Type to search by title or author..."
+                    error={Boolean(fieldErrors.bookId)}
+                    helperText={fieldErrors.bookId}
+                    InputProps={{
+                      ...params.InputProps,
+                      endAdornment: (
+                        <>
+                          {loadingOptions ? <CircularProgress color="inherit" size={18} /> : null}
+                          {params.InputProps.endAdornment}
+                        </>
+                      ),
+                    }}
+                  />
+                )}
+              />
+            </Box>
 
-            {/* Member Selector (Admin) or Member ID display */}
-            <Grid item xs={12}>
-              {isAdmin ? (
-                <TextField
-                  select
-                  required
-                  fullWidth
-                  id="memberId"
-                  name="memberId"
-                  label="Select Active Member"
-                  value={formData.memberId}
-                  onChange={handleChange}
-                  error={Boolean(fieldErrors.memberId)}
-                  helperText={fieldErrors.memberId || 'Only active members can borrow books'}
-                  disabled={submitting}
-                >
-                  {membersList.map((m) => (
-                    <MenuItem key={m.id} value={m.id}>
-                      {m.fullName} (#{m.id}) - {m.email}
-                    </MenuItem>
-                  ))}
-                </TextField>
-              ) : (
-                <TextField
-                  required
-                  fullWidth
-                  id="memberId"
-                  name="memberId"
-                  label="Member ID"
-                  value={formData.memberId}
-                  onChange={handleChange}
-                  error={Boolean(fieldErrors.memberId)}
-                  helperText={fieldErrors.memberId}
-                  disabled={submitting || Boolean(user?.id)}
+            {/* Admin Member Selector with Autocomplete */}
+            {isAdmin ? (
+              <Box>
+                <Typography variant="caption" sx={{ fontWeight: 700, color: '#334155', mb: 0.75, display: 'block' }}>
+                  Patron Member (Searchable)
+                </Typography>
+                <Autocomplete
+                  id="member-select"
+                  options={membersList}
+                  loading={loadingOptions}
+                  getOptionLabel={(option) => `${option.firstName} ${option.lastName} (${option.email})`}
+                  isOptionEqualToValue={(option, value) => option.id === value?.id}
+                  value={selectedMember}
+                  onChange={(event, newValue) => {
+                    setFormData((prev) => ({ ...prev, memberId: newValue ? newValue.id : '' }))
+                    if (fieldErrors.memberId) setFieldErrors((prev) => ({ ...prev, memberId: '' }))
+                  }}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      placeholder="Type member name or email..."
+                      error={Boolean(fieldErrors.memberId)}
+                      helperText={fieldErrors.memberId}
+                      InputProps={{
+                        ...params.InputProps,
+                        endAdornment: (
+                          <>
+                            {loadingOptions ? <CircularProgress color="inherit" size={18} /> : null}
+                            {params.InputProps.endAdornment}
+                          </>
+                        ),
+                      }}
+                    />
+                  )}
                 />
-              )}
-            </Grid>
+              </Box>
+            ) : (
+              <Box sx={{ p: 2, borderRadius: 2, bgcolor: '#f8fafc', border: '1px solid #e2e8f0' }}>
+                <Typography variant="caption" color="text.secondary" display="block">
+                  Borrowing as logged-in patron:
+                </Typography>
+                <Typography variant="body2" fontWeight={700} color="#0f172a">
+                  {user?.name || user?.email}
+                </Typography>
+              </Box>
+            )}
 
-            {/* Borrow Days */}
-            <Grid item xs={12}>
+            {/* Borrow Days Duration */}
+            <Box>
+              <Typography variant="caption" sx={{ fontWeight: 700, color: '#334155', mb: 0.75, display: 'block' }}>
+                Loan Duration (Days)
+              </Typography>
               <TextField
-                required
                 fullWidth
-                type="number"
                 id="borrowDays"
                 name="borrowDays"
-                label="Loan Period (in days)"
+                type="number"
                 value={formData.borrowDays}
-                onChange={handleChange}
+                onChange={(e) => setFormData((prev) => ({ ...prev, borrowDays: e.target.value }))}
                 error={Boolean(fieldErrors.borrowDays)}
-                helperText={fieldErrors.borrowDays || 'Standard duration is 14 days (1 to 90 days allowed)'}
-                disabled={submitting}
+                helperText={fieldErrors.borrowDays || 'Default: 14 days (Max: 90 days)'}
                 inputProps={{ min: 1, max: 90 }}
               />
-            </Grid>
-          </Grid>
+            </Box>
+          </Stack>
         </Box>
       </DialogContent>
 
-      <DialogActions sx={{ px: 3, py: 2 }}>
-        <Button onClick={onClose} disabled={submitting} color="inherit">
+      <DialogActions sx={{ px: 3, pb: 3, pt: 1 }}>
+        <Button onClick={onClose} disabled={submitting} sx={{ fontWeight: 600, color: '#64748b' }}>
           Cancel
         </Button>
         <Button
@@ -243,9 +279,16 @@ const BorrowBookDialog = ({ open, onClose, preselectedBook, onBorrowSuccess }) =
           form="borrow-form"
           variant="contained"
           disabled={submitting}
-          startIcon={submitting ? <CircularProgress size={20} color="inherit" /> : <CheckCircleIcon />}
+          startIcon={submitting ? <CircularProgress size={16} color="inherit" /> : null}
+          sx={{
+            fontWeight: 700,
+            borderRadius: 2.5,
+            bgcolor: '#2563eb',
+            px: 3,
+            '&:hover': { bgcolor: '#1d4ed8' },
+          }}
         >
-          {submitting ? 'Processing Loan...' : 'Confirm Checkout'}
+          {submitting ? 'Issuing Loan...' : 'Confirm Loan'}
         </Button>
       </DialogActions>
     </Dialog>

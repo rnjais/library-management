@@ -3,10 +3,14 @@ package com.library_management.service.impl;
 import com.library_management.dto.request.BookRequest;
 import com.library_management.dto.response.BookResponse;
 import com.library_management.entity.Book;
+import com.library_management.entity.FineStatus;
 import com.library_management.exception.BookNotAvailableException;
 import com.library_management.exception.DuplicateResourceException;
 import com.library_management.exception.ResourceNotFoundException;
 import com.library_management.repository.BookRepository;
+import com.library_management.repository.BorrowingReminderRepository;
+import com.library_management.repository.BorrowingRepository;
+import com.library_management.repository.FineRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -34,6 +38,15 @@ class BookServiceImplTest {
 
     @Mock
     private BookRepository bookRepository;
+
+    @Mock
+    private BorrowingRepository borrowingRepository;
+
+    @Mock
+    private FineRepository fineRepository;
+
+    @Mock
+    private BorrowingReminderRepository borrowingReminderRepository;
 
     @InjectMocks
     private BookServiceImpl bookService;
@@ -178,8 +191,9 @@ class BookServiceImplTest {
                 .availableCopies(6)
                 .build();
 
-        when(bookRepository.findById(1L)).thenReturn(Optional.of(sampleBook));
+        when(bookRepository.findByIdWithPessimisticLock(1L)).thenReturn(Optional.of(sampleBook));
         when(bookRepository.existsByIsbnAndIdNot("978-0134494166", 1L)).thenReturn(false);
+        when(borrowingRepository.countByBookIdAndReturnDateIsNull(1L)).thenReturn(0L);
         when(bookRepository.save(any(Book.class))).thenAnswer(inv -> inv.getArgument(0));
 
         // Act
@@ -196,7 +210,7 @@ class BookServiceImplTest {
     @DisplayName("Should throw DuplicateResourceException on update if new ISBN collides with another book")
     void testUpdateBook_IsbnCollision_ThrowsException() {
         // Arrange
-        when(bookRepository.findById(1L)).thenReturn(Optional.of(sampleBook));
+        when(bookRepository.findByIdWithPessimisticLock(1L)).thenReturn(Optional.of(sampleBook));
         when(bookRepository.existsByIsbnAndIdNot("978-0134494166", 1L)).thenReturn(true);
 
         // Act & Assert
@@ -220,8 +234,9 @@ class BookServiceImplTest {
                 .totalCopies(2)
                 .build();
 
-        when(bookRepository.findById(1L)).thenReturn(Optional.of(sampleBook));
+        when(bookRepository.findByIdWithPessimisticLock(1L)).thenReturn(Optional.of(sampleBook));
         when(bookRepository.existsByIsbnAndIdNot("978-0134494166", 1L)).thenReturn(false);
+        when(borrowingRepository.countByBookIdAndReturnDateIsNull(1L)).thenReturn(3L);
 
         // Act & Assert
         assertThrows(IllegalArgumentException.class, () -> bookService.updateBook(1L, invalidUpdateRequest));
@@ -229,25 +244,53 @@ class BookServiceImplTest {
     }
 
     @Test
-    @DisplayName("Should delete book when all copies are returned and available")
+    @DisplayName("Should reject update if explicit availableCopies violates active borrowings")
+    void testUpdateBook_AvailableExceedsTotalMinusActiveLoans_ThrowsException() {
+        sampleBook.setTotalCopies(5);
+        sampleBook.setAvailableCopies(2);
+
+        BookRequest corruptRequest = BookRequest.builder()
+                .title("Clean Architecture")
+                .author("Robert C. Martin")
+                .isbn("978-0134494166")
+                .category("Computer Science")
+                .totalCopies(5)
+                .availableCopies(4) // 3 copies are actively borrowed, so max allowed is 2
+                .build();
+
+        when(bookRepository.findByIdWithPessimisticLock(1L)).thenReturn(Optional.of(sampleBook));
+        when(bookRepository.existsByIsbnAndIdNot("978-0134494166", 1L)).thenReturn(false);
+        when(borrowingRepository.countByBookIdAndReturnDateIsNull(1L)).thenReturn(3L);
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> bookService.updateBook(1L, corruptRequest));
+        assertTrue(ex.getMessage().contains("currently borrowed out"));
+        verify(bookRepository, never()).save(any(Book.class));
+    }
+
+    @Test
+    @DisplayName("Should delete book and clean up returned historical records when no active loans or unpaid fines exist")
     void testDeleteBook_Success() {
-        // Arrange: all 5 copies available
-        when(bookRepository.findById(1L)).thenReturn(Optional.of(sampleBook));
+        // Arrange
+        when(bookRepository.findByIdWithPessimisticLock(1L)).thenReturn(Optional.of(sampleBook));
+        when(borrowingRepository.countByBookIdAndReturnDateIsNull(1L)).thenReturn(0L);
+        when(fineRepository.countByBookIdAndStatus(1L, FineStatus.UNPAID)).thenReturn(0L);
 
         // Act
         bookService.deleteBook(1L);
 
         // Assert
+        verify(borrowingReminderRepository, times(1)).deleteByBookId(1L);
+        verify(fineRepository, times(1)).deleteByBookId(1L);
+        verify(borrowingRepository, times(1)).deleteByBookId(1L);
         verify(bookRepository, times(1)).delete(sampleBook);
     }
 
     @Test
     @DisplayName("Should throw BookNotAvailableException when deleting a book with active borrowings")
     void testDeleteBook_WithActiveBorrowings_ThrowsException() {
-        // Arrange: 5 total, only 3 available (2 borrowed out)
-        sampleBook.setTotalCopies(5);
-        sampleBook.setAvailableCopies(3);
-        when(bookRepository.findById(1L)).thenReturn(Optional.of(sampleBook));
+        // Arrange: 2 active borrowings
+        when(bookRepository.findByIdWithPessimisticLock(1L)).thenReturn(Optional.of(sampleBook));
+        when(borrowingRepository.countByBookIdAndReturnDateIsNull(1L)).thenReturn(2L);
 
         // Act & Assert
         assertThrows(BookNotAvailableException.class, () -> bookService.deleteBook(1L));
@@ -255,10 +298,22 @@ class BookServiceImplTest {
     }
 
     @Test
+    @DisplayName("Should throw BookNotAvailableException when deleting a book with unpaid fines")
+    void testDeleteBook_WithUnpaidFines_ThrowsException() {
+        when(bookRepository.findByIdWithPessimisticLock(1L)).thenReturn(Optional.of(sampleBook));
+        when(borrowingRepository.countByBookIdAndReturnDateIsNull(1L)).thenReturn(0L);
+        when(fineRepository.countByBookIdAndStatus(1L, FineStatus.UNPAID)).thenReturn(1L);
+
+        BookNotAvailableException ex = assertThrows(BookNotAvailableException.class, () -> bookService.deleteBook(1L));
+        assertTrue(ex.getMessage().contains("unpaid fine"));
+        verify(bookRepository, never()).delete(any(Book.class));
+    }
+
+    @Test
     @DisplayName("Should throw ResourceNotFoundException when deleting non-existent book")
     void testDeleteBook_NotFound_ThrowsException() {
         // Arrange
-        when(bookRepository.findById(999L)).thenReturn(Optional.empty());
+        when(bookRepository.findByIdWithPessimisticLock(999L)).thenReturn(Optional.empty());
 
         // Act & Assert
         assertThrows(ResourceNotFoundException.class, () -> bookService.deleteBook(999L));

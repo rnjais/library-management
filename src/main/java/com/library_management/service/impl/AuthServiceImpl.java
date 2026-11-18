@@ -4,9 +4,11 @@ import com.library_management.dto.request.LoginRequestDto;
 import com.library_management.dto.request.RegisterRequestDto;
 import com.library_management.dto.response.AuthResponseDto;
 import com.library_management.dto.response.UserResponseDto;
+import com.library_management.entity.Member;
 import com.library_management.entity.Role;
 import com.library_management.entity.User;
 import com.library_management.exception.DuplicateResourceException;
+import com.library_management.repository.MemberRepository;
 import com.library_management.repository.UserRepository;
 import com.library_management.security.JwtService;
 import com.library_management.service.AuthService;
@@ -18,6 +20,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
@@ -29,6 +32,7 @@ import java.time.LocalDateTime;
 public class AuthServiceImpl implements AuthService {
 
     private final UserRepository userRepository;
+    private final MemberRepository memberRepository;
     private final PasswordEncoder passwordEncoder;
     private final AuthenticationManager authenticationManager;
     private final JwtService jwtService;
@@ -36,10 +40,12 @@ public class AuthServiceImpl implements AuthService {
     // Constructor Injection
     public AuthServiceImpl(
             UserRepository userRepository,
+            MemberRepository memberRepository,
             PasswordEncoder passwordEncoder,
             AuthenticationManager authenticationManager,
             JwtService jwtService) {
         this.userRepository = userRepository;
+        this.memberRepository = memberRepository;
         this.passwordEncoder = passwordEncoder;
         this.authenticationManager = authenticationManager;
         this.jwtService = jwtService;
@@ -78,10 +84,11 @@ public class AuthServiceImpl implements AuthService {
                 .build();
 
         User savedUser = userRepository.save(user);
-        log.info("User registered successfully with id={}, email={}, role={}",
-                savedUser.getId(), savedUser.getEmail(), savedUser.getRole());
+        Member member = ensureMemberProfile(savedUser);
+        log.info("User registered successfully with id={}, memberId={}, email={}, role={}",
+                savedUser.getId(), member != null ? member.getId() : null, savedUser.getEmail(), savedUser.getRole());
 
-        return UserResponseDto.fromEntity(savedUser);
+        return UserResponseDto.fromEntity(savedUser, member != null ? member.getId() : null);
     }
 
     /**
@@ -91,6 +98,7 @@ public class AuthServiceImpl implements AuthService {
      * @return AuthResponseDto containing the JWT token and safe user details.
      */
     @Override
+    @Transactional
     public AuthResponseDto login(LoginRequestDto request) {
         if (request == null) {
             throw new IllegalArgumentException("Login request cannot be null");
@@ -107,16 +115,47 @@ public class AuthServiceImpl implements AuthService {
         // 2. Retrieve authenticated User entity principal
         User user = (User) authentication.getPrincipal();
 
-        // 3. Generate signed JWT token
+        // 3. Ensure linked Member profile exists for MEMBER accounts
+        Member member = ensureMemberProfile(user);
+
+        // 4. Generate signed JWT token
         String token = jwtService.generateToken(user);
 
-        log.info("User logged in successfully with email={}, role={}", user.getEmail(), user.getRole());
+        log.info("User logged in successfully with email={}, role={}, memberId={}",
+                user.getEmail(), user.getRole(), member != null ? member.getId() : null);
 
-        // 4. Return safe AuthResponseDto
+        // 5. Return safe AuthResponseDto
         return AuthResponseDto.builder()
                 .token(token)
                 .tokenType("Bearer")
-                .user(UserResponseDto.fromEntity(user))
+                .user(UserResponseDto.fromEntity(user, member != null ? member.getId() : null))
                 .build();
+    }
+
+    /**
+     * Finds or creates a linked library Member record for a MEMBER user account
+     * so borrowers can immediately check out and track books.
+     */
+    private Member ensureMemberProfile(User user) {
+        if (user == null || user.getRole() != Role.MEMBER) {
+            return null;
+        }
+        return memberRepository.findByEmail(user.getEmail())
+                .orElseGet(() -> {
+                    String fullName = user.getName() != null ? user.getName().trim() : "Library Member";
+                    String[] parts = fullName.split("\\s+", 2);
+                    String firstName = parts[0];
+                    String lastName = parts.length > 1 && !parts[1].isBlank() ? parts[1] : "-";
+
+                    Member newMember = Member.builder()
+                            .firstName(firstName)
+                            .lastName(lastName)
+                            .email(user.getEmail())
+                            .phoneNumber("N/A")
+                            .membershipDate(LocalDate.now())
+                            .active(true)
+                            .build();
+                    return memberRepository.save(newMember);
+                });
     }
 }

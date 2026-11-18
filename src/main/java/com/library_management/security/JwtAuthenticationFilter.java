@@ -1,5 +1,6 @@
 package com.library_management.security;
 
+import io.jsonwebtoken.Claims;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -49,14 +50,23 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         final String jwt = authHeader.substring(7);
 
         try {
-            final String userEmail = jwtService.extractUsername(jwt);
+            // Single cryptographic parse + signature verification per request
+            final Claims claims = jwtService.extractAllClaims(jwt);
+            final String userEmail = claims != null ? claims.getSubject() : null;
 
             // 3. If email extracted and security context is not already populated
             if (userEmail != null && SecurityContextHolder.getContext().getAuthentication() == null) {
                 UserDetails userDetails = this.userDetailsService.loadUserByUsername(userEmail);
 
-                // 4. Validate token against loaded user details
-                if (jwtService.isTokenValid(jwt, userDetails)) {
+                // 4. Reject disabled/locked/expired accounts immediately even if JWT hasn't expired
+                boolean accountActive = userDetails.isEnabled()
+                        && userDetails.isAccountNonLocked()
+                        && userDetails.isAccountNonExpired()
+                        && userDetails.isCredentialsNonExpired();
+
+                if (!accountActive) {
+                    log.warn("Rejected JWT for inactive/disabled account '{}' on path [{}]", userEmail, request.getRequestURI());
+                } else if (jwtService.isTokenValid(claims, userDetails)) {
                     UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
                             userDetails,
                             null,

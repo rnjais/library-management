@@ -2,14 +2,13 @@ import React, { useState, useEffect, useCallback } from 'react'
 import {
   Box,
   Typography,
-  Paper,
+  Card,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
-  TablePagination,
   TextField,
   InputAdornment,
   IconButton,
@@ -21,22 +20,26 @@ import {
   Tooltip,
   Skeleton,
   Avatar,
+  Pagination,
 } from '@mui/material'
 import SearchIcon from '@mui/icons-material/Search'
 import ClearIcon from '@mui/icons-material/Clear'
 import PersonAddIcon from '@mui/icons-material/PersonAdd'
-import EditIcon from '@mui/icons-material/Edit'
-import VisibilityIcon from '@mui/icons-material/Visibility'
-import BlockIcon from '@mui/icons-material/Block'
-import DeleteIcon from '@mui/icons-material/Delete'
+import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
+import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined'
+import BlockOutlinedIcon from '@mui/icons-material/BlockOutlined'
+import HowToRegOutlinedIcon from '@mui/icons-material/HowToRegOutlined'
+import DeleteOutlineOutlinedIcon from '@mui/icons-material/DeleteOutlineOutlined'
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward'
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward'
-import FilterListIcon from '@mui/icons-material/FilterList'
 import memberService from '../services/memberService'
 import MemberFormDialog from '../components/members/MemberFormDialog'
 import MemberDetailDialog from '../components/members/MemberDetailDialog'
 import DeactivateConfirmDialog from '../components/members/DeactivateConfirmDialog'
 import DeleteMemberConfirmDialog from '../components/members/DeleteMemberConfirmDialog'
+import PageHeader from '../components/common/PageHeader'
+import StatusBadge from '../components/common/StatusBadge'
+import EmptyState from '../components/common/EmptyState'
 import { formatDate } from '../utils/formatters'
 
 const SORT_OPTIONS = [
@@ -47,24 +50,30 @@ const SORT_OPTIONS = [
   { value: 'membershipDate', label: 'Enrollment Date' },
 ]
 
+// Avatar soft background colors based on member ID
+const AVATAR_COLORS = ['#eff6ff', '#f0fdf4', '#fef3c7', '#faf5ff', '#f0fdfa', '#fdf2f8']
+const AVATAR_TEXT_COLORS = ['#2563eb', '#16a34a', '#d97706', '#9333ea', '#0d9488', '#db2777']
+
+/**
+ * Modern Member Management UI (Image 3 "spik" Table Style)
+ */
 const MemberManagementPage = () => {
-  // Data State
   const [members, setMembers] = useState([])
   const [totalElements, setTotalElements] = useState(0)
+  const [totalPages, setTotalPages] = useState(1)
   const [loading, setLoading] = useState(true)
   const [apiError, setApiError] = useState(null)
   const [feedbackMessage, setFeedbackMessage] = useState(null)
 
-  // Filter & Pagination State
   const [searchTerm, setSearchTerm] = useState('')
   const [activeSearch, setActiveSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState('ALL') // 'ALL' or 'ACTIVE'
+  const [statusFilter, setStatusFilter] = useState('ALL')
   const [sortBy, setSortBy] = useState('id')
   const [direction, setDirection] = useState('ASC')
   const [page, setPage] = useState(0)
   const [pageSize, setPageSize] = useState(10)
 
-  // Dialog State
+  // Dialog States
   const [formOpen, setFormOpen] = useState(false)
   const [selectedMemberForEdit, setSelectedMemberForEdit] = useState(null)
   const [detailOpen, setDetailOpen] = useState(false)
@@ -76,7 +85,6 @@ const MemberManagementPage = () => {
   const [selectedMemberForDelete, setSelectedMemberForDelete] = useState(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
 
-  // Load Members from Backend
   const loadMembers = useCallback(async () => {
     setLoading(true)
     setApiError(null)
@@ -109,10 +117,12 @@ const MemberManagementPage = () => {
 
       setMembers(pagedData.content || [])
       setTotalElements(pagedData.totalElements || 0)
+      setTotalPages(pagedData.totalPages || 1)
     } catch (err) {
       setApiError(err.message || 'Failed to fetch library members.')
       setMembers([])
       setTotalElements(0)
+      setTotalPages(1)
     } finally {
       setLoading(false)
     }
@@ -122,7 +132,6 @@ const MemberManagementPage = () => {
     loadMembers()
   }, [loadMembers])
 
-  // Filter Handlers
   const handleSearchSubmit = (e) => {
     e?.preventDefault()
     setPage(0)
@@ -150,17 +159,7 @@ const MemberManagementPage = () => {
     setPage(0)
   }
 
-  // Pagination Handlers
-  const handleChangePage = (event, newPage) => {
-    setPage(newPage)
-  }
-
-  const handleChangeRowsPerPage = (event) => {
-    setPageSize(parseInt(event.target.value, 10))
-    setPage(0)
-  }
-
-  // Dialog Handlers
+  // Action Triggers
   const handleOpenAdd = () => {
     setSelectedMemberForEdit(null)
     setFormOpen(true)
@@ -184,18 +183,25 @@ const MemberManagementPage = () => {
   const handleConfirmDeactivate = async () => {
     if (!selectedMemberForDeactivate) return
     setDeactivateLoading(true)
-
     try {
       await memberService.deactivateMember(selectedMemberForDeactivate.id)
+      setFeedbackMessage(`Member "${selectedMemberForDeactivate.fullName}" has been deactivated.`)
       setDeactivateOpen(false)
-      setSelectedMemberForDeactivate(null)
-      setFeedbackMessage('Member account has been deactivated.')
       loadMembers()
     } catch (err) {
-      setApiError(err.response?.data?.message || err.message || 'Failed to deactivate member account.')
-      setDeactivateOpen(false)
+      setApiError(err.message || 'Failed to deactivate member.')
     } finally {
       setDeactivateLoading(false)
+    }
+  }
+
+  const handleActivateMember = async (member) => {
+    try {
+      await memberService.activateMember(member.id)
+      setFeedbackMessage(`Member "${member.fullName}" has been reactivated.`)
+      loadMembers()
+    } catch (err) {
+      setApiError(err.message || 'Failed to reactivate member.')
     }
   }
 
@@ -207,376 +213,363 @@ const MemberManagementPage = () => {
   const handleConfirmDelete = async () => {
     if (!selectedMemberForDelete) return
     setDeleteLoading(true)
-
     try {
       await memberService.deleteMember(selectedMemberForDelete.id)
-      const deletedName = selectedMemberForDelete.fullName || `ID #${selectedMemberForDelete.id}`
+      setFeedbackMessage(`Member account "${selectedMemberForDelete.fullName}" was permanently removed.`)
       setDeleteOpen(false)
-      setSelectedMemberForDelete(null)
-      setFeedbackMessage(`Member "${deletedName}" has been permanently deleted.`)
       loadMembers()
     } catch (err) {
-      setApiError(err.response?.data?.message || err.message || 'Failed to delete member.')
-      setDeleteOpen(false)
+      setApiError(err.message || 'Failed to delete member account.')
     } finally {
       setDeleteLoading(false)
     }
   }
 
-  const handleMemberSaved = (message) => {
-    setFeedbackMessage(message)
-    loadMembers()
-  }
-
   return (
     <Box>
-      {/* Header */}
-      <Stack
-        direction={{ xs: 'column', sm: 'row' }}
-        justifyContent="space-between"
-        alignItems={{ xs: 'flex-start', sm: 'center' }}
-        spacing={2}
-        mb={3}
-      >
-        <Box>
-          <Typography variant="h4" component="h1" fontWeight={700} gutterBottom>
-            Patron Member Management
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Manage enrolled library members, review active accounts, update contact profiles, and register patrons.
-          </Typography>
-        </Box>
+      <PageHeader
+        title="Patron Members"
+        subtitle="Manage library memberships, account activation, contact info, and loan permissions"
+        breadcrumbs={[{ label: 'Members', path: null }]}
+      />
 
-        <Button
-          variant="contained"
-          color="primary"
-          startIcon={<PersonAddIcon />}
-          onClick={handleOpenAdd}
-          sx={{ fontWeight: 600, textTransform: 'none' }}
-        >
-          Register Member
-        </Button>
-      </Stack>
-
-      {/* Alerts */}
       {feedbackMessage && (
-        <Alert severity="success" onClose={() => setFeedbackMessage(null)} sx={{ mb: 2 }}>
+        <Alert severity="success" sx={{ mb: 3, borderRadius: 2.5 }} onClose={() => setFeedbackMessage(null)}>
           {feedbackMessage}
         </Alert>
       )}
 
       {apiError && (
-        <Alert severity="error" onClose={() => setApiError(null)} sx={{ mb: 2 }}>
+        <Alert severity="error" sx={{ mb: 3, borderRadius: 2.5 }} onClose={() => setApiError(null)}>
           {apiError}
         </Alert>
       )}
 
-      {/* Toolbar / Search Filter */}
-      <Paper elevation={1} sx={{ p: 2, mb: 3, borderRadius: 2 }}>
+      {/* Main Table Container Card (Image 3 Style) */}
+      <Card sx={{ borderRadius: 4, border: '1px solid #e2e8f0', p: { xs: 2, sm: 3.5 } }}>
+        {/* Table Toolbar Header */}
         <Stack
           direction={{ xs: 'column', md: 'row' }}
+          justifyContent="space-between"
+          alignItems={{ xs: 'flex-start', md: 'center' }}
           spacing={2}
-          alignItems={{ xs: 'stretch', md: 'center' }}
+          mb={3}
         >
-          {/* Name Search Field */}
-          <Box component="form" onSubmit={handleSearchSubmit} sx={{ flexGrow: 1 }}>
-            <TextField
-              fullWidth
+          <Stack direction="row" alignItems="center" spacing={1.5}>
+            <Typography variant="h6" fontWeight={800} color="#0f172a">
+              All Members
+            </Typography>
+            <Chip
+              label={`${totalElements} patrons`}
               size="small"
-              placeholder="Search member by first or last name..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <SearchIcon color="action" fontSize="small" />
-                  </InputAdornment>
-                ),
-                endAdornment: (
-                  <InputAdornment position="end">
-                    {searchTerm && (
+              sx={{ fontWeight: 700, bgcolor: '#eff6ff', color: '#2563eb', borderRadius: 2 }}
+            />
+          </Stack>
+
+          {/* Right Toolbar */}
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems="center" width={{ xs: '100%', md: 'auto' }}>
+            <Box component="form" onSubmit={handleSearchSubmit} sx={{ width: { xs: '100%', sm: 220 } }}>
+              <TextField
+                fullWidth
+                size="small"
+                placeholder="Search by name..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon sx={{ color: '#94a3b8', fontSize: 18 }} />
+                    </InputAdornment>
+                  ),
+                  endAdornment: searchTerm ? (
+                    <InputAdornment position="end">
                       <IconButton size="small" onClick={handleClearSearch} edge="end">
                         <ClearIcon fontSize="small" />
                       </IconButton>
-                    )}
-                    <Button
-                      variant="contained"
-                      size="small"
-                      type="submit"
-                      sx={{ ml: 1, textTransform: 'none' }}
-                    >
-                      Search
-                    </Button>
-                  </InputAdornment>
-                ),
+                    </InputAdornment>
+                  ) : null,
+                }}
+              />
+            </Box>
+
+            <TextField
+              select
+              size="small"
+              value={statusFilter}
+              onChange={handleStatusChange}
+              sx={{ minWidth: 140, width: { xs: '100%', sm: 'auto' } }}
+            >
+              <MenuItem value="ALL">All Statuses</MenuItem>
+              <MenuItem value="ACTIVE">Active Only</MenuItem>
+            </TextField>
+
+            <TextField
+              select
+              size="small"
+              value={sortBy}
+              onChange={handleSortChange}
+              sx={{ minWidth: 140, width: { xs: '100%', sm: 'auto' } }}
+            >
+              {SORT_OPTIONS.map((opt) => (
+                <MenuItem key={opt.value} value={opt.value}>
+                  Sort: {opt.label}
+                </MenuItem>
+              ))}
+            </TextField>
+
+            <Tooltip title={`Direction: ${direction}`}>
+              <IconButton size="small" onClick={handleToggleDirection} sx={{ border: '1px solid #e2e8f0', borderRadius: 2 }}>
+                {direction === 'ASC' ? <ArrowUpwardIcon fontSize="small" /> : <ArrowDownwardIcon fontSize="small" />}
+              </IconButton>
+            </Tooltip>
+
+            {/* "+ Register Member" Button (Image 3 "+ Add" style) */}
+            <Button
+              variant="contained"
+              startIcon={<PersonAddIcon />}
+              onClick={handleOpenAdd}
+              sx={{
+                bgcolor: '#2563eb',
+                color: '#ffffff',
+                fontWeight: 700,
+                borderRadius: 2.5,
+                px: 2.5,
+                py: 0.85,
+                whiteSpace: 'nowrap',
+                boxShadow: '0 4px 12px rgba(37, 99, 235, 0.35)',
+                '&:hover': { bgcolor: '#1d4ed8' },
+              }}
+            >
+              Register Member
+            </Button>
+          </Stack>
+        </Stack>
+
+        {/* Member Data Table (Image 3 Style) */}
+        <TableContainer sx={{ overflowX: 'auto' }}>
+          <Table>
+            <TableHead>
+              <TableRow>
+                <TableCell>Member Name</TableCell>
+                <TableCell>ID</TableCell>
+                <TableCell>Contact Phone</TableCell>
+                <TableCell>Enrolled Date</TableCell>
+                <TableCell align="center">Status</TableCell>
+                <TableCell align="right">Actions</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {loading ? (
+                [1, 2, 3, 4, 5, 6].map((i) => (
+                  <TableRow key={i}>
+                    <TableCell><Skeleton width={180} height={32} /></TableCell>
+                    <TableCell><Skeleton width={50} /></TableCell>
+                    <TableCell><Skeleton width={110} /></TableCell>
+                    <TableCell><Skeleton width={90} /></TableCell>
+                    <TableCell align="center"><Skeleton width={70} /></TableCell>
+                    <TableCell align="right"><Skeleton width={110} /></TableCell>
+                  </TableRow>
+                ))
+              ) : members.length > 0 ? (
+                members.map((member) => {
+                  const avatarBg = AVATAR_COLORS[member.id % AVATAR_COLORS.length]
+                  const avatarColor = AVATAR_TEXT_COLORS[member.id % AVATAR_TEXT_COLORS.length]
+                  return (
+                    <TableRow key={member.id} hover sx={{ '&:last-child td': { border: 0 } }}>
+                      {/* Avatar Initials + Full Name + Email (Image 3 Style) */}
+                      <TableCell>
+                        <Stack direction="row" alignItems="center" spacing={1.75}>
+                          <Avatar
+                            sx={{
+                              width: 38,
+                              height: 38,
+                              borderRadius: 2.25,
+                              bgcolor: avatarBg,
+                              color: avatarColor,
+                              fontWeight: 700,
+                              fontSize: '0.875rem',
+                            }}
+                          >
+                            {(member.firstName || 'M').charAt(0).toUpperCase()}
+                          </Avatar>
+                          <Box sx={{ maxWidth: 220 }}>
+                            <Typography variant="body2" sx={{ fontWeight: 700, color: '#0f172a', lineHeight: 1.25 }}>
+                              {member.fullName}
+                            </Typography>
+                            <Typography variant="caption" sx={{ color: '#64748b', fontSize: '0.72rem' }} noWrap>
+                              {member.email}
+                            </Typography>
+                          </Box>
+                        </Stack>
+                      </TableCell>
+
+                      {/* ID chip */}
+                      <TableCell>
+                        <Chip
+                          label={`#${member.id}`}
+                          size="small"
+                          sx={{
+                            fontWeight: 700,
+                            bgcolor: '#f1f5f9',
+                            color: '#475569',
+                            fontSize: '0.72rem',
+                            borderRadius: 1.5,
+                          }}
+                        />
+                      </TableCell>
+
+                      {/* Phone */}
+                      <TableCell sx={{ color: '#334155', fontWeight: 500 }}>
+                        {member.phoneNumber || '—'}
+                      </TableCell>
+
+                      {/* Enrolled Date */}
+                      <TableCell sx={{ color: '#64748b', fontSize: '0.8125rem' }}>
+                        {formatDate(member.membershipDate)}
+                      </TableCell>
+
+                      {/* StatusBadge */}
+                      <TableCell align="center">
+                        <StatusBadge status={member.active ? 'ACTIVE' : 'INACTIVE'} />
+                      </TableCell>
+
+                      {/* Actions */}
+                      <TableCell align="right">
+                        <Stack direction="row" spacing={0.5} justifyContent="flex-end" alignItems="center">
+                          <Tooltip title="View Member Details">
+                            <IconButton size="small" onClick={() => handleOpenDetail(member)} sx={{ color: '#64748b' }}>
+                              <VisibilityOutlinedIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+
+                          <Tooltip title="Edit Profile">
+                            <IconButton size="small" onClick={() => handleOpenEdit(member)} sx={{ color: '#64748b' }}>
+                              <EditOutlinedIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+
+                          {member.active ? (
+                            <Tooltip title="Deactivate Membership">
+                              <IconButton
+                                size="small"
+                                onClick={() => handleOpenDeactivate(member)}
+                                sx={{ color: '#f59e0b', '&:hover': { bgcolor: '#fef3c7' } }}
+                              >
+                                <BlockOutlinedIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          ) : (
+                            <Tooltip title="Reactivate Membership">
+                              <IconButton
+                                size="small"
+                                onClick={() => handleActivateMember(member)}
+                                sx={{ color: '#16a34a', '&:hover': { bgcolor: '#dcfce7' } }}
+                              >
+                                <HowToRegOutlinedIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          )}
+
+                          <Tooltip title="Permanently Delete Member">
+                            <IconButton
+                              size="small"
+                              onClick={() => handleOpenDelete(member)}
+                              sx={{ color: '#ef4444', '&:hover': { bgcolor: '#fee2e2' } }}
+                            >
+                              <DeleteOutlineOutlinedIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        </Stack>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={6} sx={{ p: 4 }}>
+                    <EmptyState
+                      title="No members found"
+                      description={
+                        activeSearch || statusFilter !== 'ALL'
+                          ? 'No members match your search criteria. Try modifying your filters.'
+                          : 'No patrons are currently registered in the system.'
+                      }
+                      actionText="Register Member"
+                      onAction={handleOpenAdd}
+                    />
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </TableContainer>
+
+        {/* Numbered Pill Pagination (Image 3 Style) */}
+        {totalPages > 1 && (
+          <Box sx={{ mt: 3, pt: 2, borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'center' }}>
+            <Pagination
+              count={totalPages}
+              page={page + 1}
+              onChange={(e, p) => setPage(p - 1)}
+              color="primary"
+              shape="rounded"
+              sx={{
+                '& .MuiPaginationItem-root': {
+                  borderRadius: 2,
+                  fontWeight: 600,
+                  fontSize: '0.8125rem',
+                },
+                '& .Mui-selected': {
+                  bgcolor: '#2563eb !important',
+                  color: '#ffffff',
+                },
               }}
             />
           </Box>
-
-          {/* Status Filter */}
-          <TextField
-            select
-            size="small"
-            label="Membership Status"
-            value={statusFilter}
-            onChange={handleStatusChange}
-            sx={{ minWidth: 170 }}
-          >
-            <MenuItem value="ALL">All Statuses</MenuItem>
-            <MenuItem value="ACTIVE">Active Members Only</MenuItem>
-          </TextField>
-
-          {/* Sort Selection */}
-          <TextField
-            select
-            size="small"
-            label="Sort By"
-            value={sortBy}
-            onChange={handleSortChange}
-            sx={{ minWidth: 150 }}
-          >
-            {SORT_OPTIONS.map((opt) => (
-              <MenuItem key={opt.value} value={opt.value}>
-                {opt.label}
-              </MenuItem>
-            ))}
-          </TextField>
-
-          {/* Direction Toggle */}
-          <Tooltip title={`Direction: ${direction === 'ASC' ? 'Ascending' : 'Descending'}`}>
-            <Button
-              variant="outlined"
-              size="medium"
-              onClick={handleToggleDirection}
-              startIcon={direction === 'ASC' ? <ArrowUpwardIcon /> : <ArrowDownwardIcon />}
-              sx={{ minWidth: 110, textTransform: 'none' }}
-            >
-              {direction}
-            </Button>
-          </Tooltip>
-        </Stack>
-      </Paper>
-
-      {/* Member Directory Table */}
-      <TableContainer component={Paper} elevation={2} sx={{ borderRadius: 2, overflow: 'hidden' }}>
-        <Table aria-label="member directory table">
-          <TableHead sx={{ bgcolor: 'background.default' }}>
-            <TableRow>
-              <TableCell sx={{ fontWeight: 700 }}>Patron Name</TableCell>
-              <TableCell sx={{ fontWeight: 700 }}>Contact Information</TableCell>
-              <TableCell sx={{ fontWeight: 700 }}>Address</TableCell>
-              <TableCell sx={{ fontWeight: 700 }}>Enrollment Date</TableCell>
-              <TableCell align="center" sx={{ fontWeight: 700 }}>
-                Status
-              </TableCell>
-              <TableCell align="right" sx={{ fontWeight: 700 }}>
-                Actions
-              </TableCell>
-            </TableRow>
-          </TableHead>
-
-          <TableBody>
-            {loading ? (
-              // Loading Skeleton Rows
-              Array.from({ length: pageSize }).map((_, idx) => (
-                <TableRow key={idx}>
-                  <TableCell>
-                    <Skeleton variant="text" width="60%" />
-                    <Skeleton variant="text" width="30%" />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton variant="text" width="80%" />
-                    <Skeleton variant="text" width="50%" />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton variant="text" width="70%" />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton variant="text" width="50%" />
-                  </TableCell>
-                  <TableCell align="center">
-                    <Skeleton variant="rectangular" width={70} height={24} sx={{ mx: 'auto', borderRadius: 4 }} />
-                  </TableCell>
-                  <TableCell align="right">
-                    <Skeleton variant="rectangular" width={80} height={32} sx={{ ml: 'auto' }} />
-                  </TableCell>
-                </TableRow>
-              ))
-            ) : members.length > 0 ? (
-              members.map((member) => (
-                <TableRow key={member.id} hover>
-                  {/* Name & Avatar */}
-                  <TableCell>
-                    <Stack direction="row" spacing={1.5} alignItems="center">
-                      <Avatar sx={{ width: 34, height: 34, bgcolor: 'primary.light', fontSize: 14, fontWeight: 700 }}>
-                        {member.firstName?.charAt(0) || 'M'}
-                      </Avatar>
-                      <Box>
-                        <Typography variant="subtitle2" fontWeight={600} color="text.primary">
-                          {member.fullName}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          ID: #{member.id}
-                        </Typography>
-                      </Box>
-                    </Stack>
-                  </TableCell>
-
-                  {/* Contact Info */}
-                  <TableCell>
-                    <Typography variant="body2" fontWeight={500}>
-                      {member.email}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      {member.phoneNumber}
-                    </Typography>
-                  </TableCell>
-
-                  {/* Address */}
-                  <TableCell>
-                    <Typography variant="body2" color="text.secondary" noWrap sx={{ maxWidth: 180 }}>
-                      {member.address || '—'}
-                    </Typography>
-                  </TableCell>
-
-                  {/* Enrollment Date */}
-                  <TableCell>
-                    <Typography variant="body2">
-                      {formatDate(member.membershipDate)}
-                    </Typography>
-                  </TableCell>
-
-                  {/* Status Badge */}
-                  <TableCell align="center">
-                    <Chip
-                      label={member.active ? 'Active' : 'Inactive'}
-                      size="small"
-                      color={member.active ? 'success' : 'default'}
-                      variant={member.active ? 'outlined' : 'filled'}
-                      sx={{ fontWeight: 600, fontSize: '0.72rem' }}
-                    />
-                  </TableCell>
-
-                  {/* Action Buttons */}
-                  <TableCell align="right">
-                    <Stack direction="row" spacing={0.5} justifyContent="flex-end">
-                      <Tooltip title="View Member Details">
-                        <IconButton
-                          size="small"
-                          color="info"
-                          onClick={() => handleOpenDetail(member)}
-                        >
-                          <VisibilityIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-
-                      <Tooltip title="Edit Profile">
-                        <IconButton
-                          size="small"
-                          color="primary"
-                          onClick={() => handleOpenEdit(member)}
-                        >
-                          <EditIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-
-                      {member.active && (
-                        <Tooltip title="Deactivate Membership">
-                          <IconButton
-                            size="small"
-                            color="warning"
-                            onClick={() => handleOpenDeactivate(member)}
-                          >
-                            <BlockIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                      )}
-
-                      <Tooltip title="Delete Member">
-                        <IconButton
-                          size="small"
-                          color="error"
-                          onClick={() => handleOpenDelete(member)}
-                        >
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                    </Stack>
-                  </TableCell>
-                </TableRow>
-              ))
-            ) : (
-              // Empty State
-              <TableRow>
-                <TableCell colSpan={6} align="center" sx={{ py: 6 }}>
-                  <Typography variant="subtitle1" fontWeight={600} gutterBottom>
-                    No patron members found.
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" mb={2}>
-                    {activeSearch || statusFilter !== 'ALL'
-                      ? 'No members match your search criteria. Try modifying your filters.'
-                      : 'No members are registered yet. Register a member to get started.'}
-                  </Typography>
-                  {(activeSearch || statusFilter !== 'ALL') && (
-                    <Button
-                      variant="outlined"
-                      size="small"
-                      startIcon={<FilterListIcon />}
-                      onClick={() => {
-                        handleClearSearch()
-                        setStatusFilter('ALL')
-                      }}
-                    >
-                      Reset All Filters
-                    </Button>
-                  )}
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-
-        {/* Pagination */}
-        <TablePagination
-          rowsPerPageOptions={[5, 10, 25, 50]}
-          component="div"
-          count={totalElements}
-          rowsPerPage={pageSize}
-          page={page}
-          onPageChange={handleChangePage}
-          onRowsPerPageChange={handleChangeRowsPerPage}
-        />
-      </TableContainer>
+        )}
+      </Card>
 
       {/* Dialogs */}
-      <MemberFormDialog
-        open={formOpen}
-        onClose={() => setFormOpen(false)}
-        memberToEdit={selectedMemberForEdit}
-        onMemberSaved={handleMemberSaved}
-      />
+      {formOpen && (
+        <MemberFormDialog
+          open={formOpen}
+          onClose={() => setFormOpen(false)}
+          memberToEdit={selectedMemberForEdit}
+          onMemberSaved={() => {
+            setFeedbackMessage(selectedMemberForEdit ? 'Member profile updated.' : 'New member enrolled.')
+            setFormOpen(false)
+            loadMembers()
+          }}
+        />
+      )}
 
-      <MemberDetailDialog
-        open={detailOpen}
-        onClose={() => setDetailOpen(false)}
-        member={selectedMemberForDetail}
-      />
+      {detailOpen && (
+        <MemberDetailDialog
+          open={detailOpen}
+          onClose={() => setDetailOpen(false)}
+          member={selectedMemberForDetail}
+        />
+      )}
 
-      <DeactivateConfirmDialog
-        open={deactivateOpen}
-        onClose={() => setDeactivateOpen(false)}
-        member={selectedMemberForDeactivate}
-        onConfirm={handleConfirmDeactivate}
-        loading={deactivateLoading}
-      />
+      {deactivateOpen && (
+        <DeactivateConfirmDialog
+          open={deactivateOpen}
+          onClose={() => setDeactivateOpen(false)}
+          onConfirm={handleConfirmDeactivate}
+          memberName={selectedMemberForDeactivate?.fullName}
+          loading={deactivateLoading}
+        />
+      )}
 
-      <DeleteMemberConfirmDialog
-        open={deleteOpen}
-        onClose={() => setDeleteOpen(false)}
-        member={selectedMemberForDelete}
-        onConfirm={handleConfirmDelete}
-        loading={deleteLoading}
-      />
+      {deleteOpen && (
+        <DeleteMemberConfirmDialog
+          open={deleteOpen}
+          onClose={() => setDeleteOpen(false)}
+          onConfirm={handleConfirmDelete}
+          member={selectedMemberForDelete}
+          loading={deleteLoading}
+        />
+      )}
     </Box>
   )
 }

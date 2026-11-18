@@ -5,6 +5,7 @@ import com.library_management.dto.response.ApiResponse;
 import com.library_management.dto.response.MemberResponseDto;
 import com.library_management.dto.response.PagedResponse;
 import com.library_management.service.MemberService;
+import com.library_management.util.PaginationUtils;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -196,7 +197,7 @@ public class MemberController {
      * @return 200 OK with the updated MemberResponseDto wrapped in ApiResponse.
      */
     @PatchMapping("/{id}/deactivate")
-    @Operation(summary = "Deactivate member", description = "Deactivates member account, preventing new book borrowings. Requires ADMIN role.")
+    @Operation(summary = "Deactivate member", description = "Deactivates member account and disables linked login credentials. Requires ADMIN role.")
     @ApiResponses(value = {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Member deactivated successfully"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Member not found with specified ID")
@@ -205,6 +206,25 @@ public class MemberController {
             @Parameter(description = "Unique ID of the member to deactivate") @PathVariable("id") Long id) {
         MemberResponseDto response = memberService.deactivateMember(id);
         return ResponseEntity.ok(ApiResponse.success("Member deactivated successfully", response));
+    }
+
+    /**
+     * PATCH /api/members/{id}/activate
+     * Reactivates an inactive member's membership and re-enables linked login credentials.
+     *
+     * @param id The ID of the member to reactivate.
+     * @return 200 OK with the updated MemberResponseDto wrapped in ApiResponse.
+     */
+    @PatchMapping("/{id}/activate")
+    @Operation(summary = "Reactivate member", description = "Reactivates an inactive member account and re-enables linked login credentials. Requires ADMIN role.")
+    @ApiResponses(value = {
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Member reactivated successfully"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Member not found with specified ID")
+    })
+    public ResponseEntity<ApiResponse<MemberResponseDto>> activateMember(
+            @Parameter(description = "Unique ID of the member to reactivate") @PathVariable("id") Long id) {
+        MemberResponseDto response = memberService.activateMember(id);
+        return ResponseEntity.ok(ApiResponse.success("Member reactivated successfully", response));
     }
 
     /**
@@ -231,15 +251,8 @@ public class MemberController {
      * Helper method to validate pagination parameters and construct a Pageable instance.
      */
     private Pageable buildPageable(int page, int size, String sortBy, String direction) {
-        if (page < 0) {
-            throw new IllegalArgumentException("Page index cannot be negative");
-        }
-        if (size <= 0 || size > 100) {
-            throw new IllegalArgumentException("Page size must be between 1 and 100");
-        }
-        Sort.Direction sortDirection = direction != null && direction.equalsIgnoreCase("DESC")
-                ? Sort.Direction.DESC
-                : Sort.Direction.ASC;
-        return PageRequest.of(page, size, Sort.by(sortDirection, sortBy));
+        return PaginationUtils.buildPageable(
+                page, size, sortBy, direction, PaginationUtils.MEMBER_SORT_FIELDS, Sort.Direction.ASC
+        );
     }
 }

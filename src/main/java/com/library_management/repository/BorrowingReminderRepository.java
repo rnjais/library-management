@@ -40,7 +40,16 @@ public interface BorrowingReminderRepository extends JpaRepository<BorrowingRemi
      *
      * @param memberId The member ID.
      */
-    @org.springframework.data.jpa.repository.Modifying
+    @org.springframework.data.jpa.repository.Modifying(clearAutomatically = true, flushAutomatically = true)
     @org.springframework.data.jpa.repository.Query("DELETE FROM BorrowingReminder br WHERE br.borrowing.id IN (SELECT b.id FROM Borrowing b WHERE b.member.id = :memberId)")
     void deleteByMemberId(@org.springframework.data.repository.query.Param("memberId") Long memberId);
+
+    /**
+     * Deletes all reminder logs for loans associated with a book.
+     *
+     * @param bookId The book ID.
+     */
+    @org.springframework.data.jpa.repository.Modifying(clearAutomatically = true, flushAutomatically = true)
+    @org.springframework.data.jpa.repository.Query("DELETE FROM BorrowingReminder br WHERE br.borrowing.id IN (SELECT b.id FROM Borrowing b WHERE b.book.id = :bookId)")
+    void deleteByBookId(@org.springframework.data.repository.query.Param("bookId") Long bookId);
 }

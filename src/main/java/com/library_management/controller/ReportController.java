@@ -4,6 +4,7 @@ import com.library_management.dto.response.*;
 import com.library_management.entity.BorrowingStatus;
 import com.library_management.entity.FineStatus;
 import com.library_management.service.DashboardService;
+import com.library_management.util.PaginationUtils;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -80,7 +81,9 @@ public class ReportController {
             @Parameter(description = "Property to sort by") @RequestParam(value = "sortBy", defaultValue = "id") String sortBy,
             @Parameter(description = "Sort direction (ASC or DESC)") @RequestParam(value = "direction", defaultValue = "DESC") String direction) {
 
-        Pageable pageable = buildPageable(page, size, sortBy, direction);
+        Pageable pageable = PaginationUtils.buildPageable(
+                page, size, sortBy, direction, PaginationUtils.MEMBER_SORT_FIELDS, Sort.Direction.DESC
+        );
         MemberReportDto report = dashboardService.getMemberReport(active, startDate, endDate, pageable);
         return ResponseEntity.ok(ApiResponse.success("Member patronage report retrieved successfully", report));
     }
@@ -113,7 +116,9 @@ public class ReportController {
             @Parameter(description = "Property to sort by") @RequestParam(value = "sortBy", defaultValue = "borrowDate") String sortBy,
             @Parameter(description = "Sort direction (ASC or DESC)") @RequestParam(value = "direction", defaultValue = "DESC") String direction) {
 
-        Pageable pageable = buildPageable(page, size, sortBy, direction);
+        Pageable pageable = PaginationUtils.buildPageable(
+                page, size, sortBy, direction, PaginationUtils.BORROWING_SORT_FIELDS, Sort.Direction.DESC
+        );
         BorrowingReportDto report = dashboardService.getBorrowingReport(status, startDate, endDate, pageable);
         return ResponseEntity.ok(ApiResponse.success("Borrowing circulation report retrieved successfully", report));
     }
@@ -140,7 +145,9 @@ public class ReportController {
             @Parameter(description = "Property to sort by") @RequestParam(value = "sortBy", defaultValue = "dueDate") String sortBy,
             @Parameter(description = "Sort direction (ASC or DESC)") @RequestParam(value = "direction", defaultValue = "ASC") String direction) {
 
-        Pageable pageable = buildPageable(page, size, sortBy, direction);
+        Pageable pageable = PaginationUtils.buildPageable(
+                page, size, sortBy, direction, PaginationUtils.BORROWING_SORT_FIELDS, Sort.Direction.ASC
+        );
         PagedResponse<BorrowingResponseDto> report = dashboardService.getOverdueReport(pageable);
         return ResponseEntity.ok(ApiResponse.success("Overdue borrowings report retrieved successfully", report));
     }
@@ -173,24 +180,10 @@ public class ReportController {
             @Parameter(description = "Property to sort by") @RequestParam(value = "sortBy", defaultValue = "calculatedAt") String sortBy,
             @Parameter(description = "Sort direction (ASC or DESC)") @RequestParam(value = "direction", defaultValue = "DESC") String direction) {
 
-        Pageable pageable = buildPageable(page, size, sortBy, direction);
+        Pageable pageable = PaginationUtils.buildPageable(
+                page, size, sortBy, direction, PaginationUtils.FINE_SORT_FIELDS, Sort.Direction.DESC
+        );
         FineReportDto report = dashboardService.getFineReport(status, startDate, endDate, pageable);
         return ResponseEntity.ok(ApiResponse.success("Fine financial report retrieved successfully", report));
-    }
-
-    /**
-     * Helper method to validate pagination parameters and construct a Pageable instance.
-     */
-    private Pageable buildPageable(int page, int size, String sortBy, String direction) {
-        if (page < 0) {
-            throw new IllegalArgumentException("Page index cannot be negative");
-        }
-        if (size <= 0 || size > 100) {
-            throw new IllegalArgumentException("Page size must be between 1 and 100");
-        }
-        Sort.Direction sortDirection = direction != null && direction.equalsIgnoreCase("ASC")
-                ? Sort.Direction.ASC
-                : Sort.Direction.DESC;
-        return PageRequest.of(page, size, Sort.by(sortDirection, sortBy));
     }
 }

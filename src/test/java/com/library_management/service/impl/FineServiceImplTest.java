@@ -134,7 +134,7 @@ class FineServiceImplTest {
 
     @Test
     void shouldPayFineSuccessfully() {
-        when(fineRepository.findById(501L)).thenReturn(Optional.of(sampleFine));
+        when(fineRepository.findByIdWithPessimisticLock(501L)).thenReturn(Optional.of(sampleFine));
         when(fineRepository.save(any(Fine.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         FineResponseDto response = fineService.payFine(501L, null);
@@ -147,11 +147,35 @@ class FineServiceImplTest {
     }
 
     @Test
+    void shouldPersistPaymentAuditMetadataWhenPayingFine() {
+        when(fineRepository.findByIdWithPessimisticLock(501L)).thenReturn(Optional.of(sampleFine));
+        when(fineRepository.save(any(Fine.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        com.library_management.dto.request.FinePaymentRequestDto paymentRequest =
+                com.library_management.dto.request.FinePaymentRequestDto.builder()
+                        .paymentMethod("  UPI  ")
+                        .transactionReference("  TXN-987654  ")
+                        .notes("  Paid at front desk  ")
+                        .build();
+
+        FineResponseDto response = fineService.payFine(501L, paymentRequest);
+
+        assertNotNull(response);
+        assertEquals(FineStatus.PAID, response.getStatus());
+        assertEquals("UPI", response.getPaymentMethod());
+        assertEquals("TXN-987654", response.getTransactionReference());
+        assertEquals("Paid at front desk", response.getPaymentNotes());
+        assertEquals("UPI", sampleFine.getPaymentMethod());
+        assertEquals("TXN-987654", sampleFine.getTransactionReference());
+        assertEquals("Paid at front desk", sampleFine.getPaymentNotes());
+    }
+
+    @Test
     void shouldRejectPayFineWhenAlreadyPaid() {
         sampleFine.setStatus(FineStatus.PAID);
         sampleFine.setPaidAt(LocalDateTime.now());
 
-        when(fineRepository.findById(501L)).thenReturn(Optional.of(sampleFine));
+        when(fineRepository.findByIdWithPessimisticLock(501L)).thenReturn(Optional.of(sampleFine));
 
         assertThrows(FineAlreadyPaidException.class, () -> fineService.payFine(501L, null));
         verify(fineRepository, never()).save(any(Fine.class));
@@ -159,7 +183,7 @@ class FineServiceImplTest {
 
     @Test
     void shouldRejectPayFineWhenNotFound() {
-        when(fineRepository.findById(999L)).thenReturn(Optional.empty());
+        when(fineRepository.findByIdWithPessimisticLock(999L)).thenReturn(Optional.empty());
 
         assertThrows(ResourceNotFoundException.class, () -> fineService.payFine(999L, null));
     }

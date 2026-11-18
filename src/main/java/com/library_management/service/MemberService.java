@@ -62,12 +62,20 @@ public interface MemberService {
     MemberResponseDto updateMember(Long id, MemberRequestDto request);
 
     /**
-     * Deactivates a member's membership (soft deactivation).
+     * Deactivates a member's membership (soft deactivation) and disables linked user login.
      *
      * @param id The ID of the member to deactivate.
      * @return The updated MemberResponseDto with active = false.
      */
     MemberResponseDto deactivateMember(Long id);
+
+    /**
+     * Reactivates an inactive member's membership and re-enables linked user login.
+     *
+     * @param id The ID of the member to reactivate.
+     * @return The updated MemberResponseDto with active = true.
+     */
+    MemberResponseDto activateMember(Long id);
 
     /**
      * Permanently deletes a member and cleans up associated accounts.

@@ -35,6 +35,10 @@ public class FineResponseDto {
     @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
     private LocalDateTime paidAt;
 
+    private String paymentMethod;
+    private String transactionReference;
+    private String paymentNotes;
+
     /**
      * Nested book summary details for fine receipt reporting.
      */
@@ -108,6 +112,9 @@ public class FineResponseDto {
                 .status(fine.getStatus())
                 .calculatedAt(fine.getCalculatedAt())
                 .paidAt(fine.getPaidAt())
+                .paymentMethod(fine.getPaymentMethod())
+                .transactionReference(fine.getTransactionReference())
+                .paymentNotes(fine.getPaymentNotes())
                 .build();
     }
 }

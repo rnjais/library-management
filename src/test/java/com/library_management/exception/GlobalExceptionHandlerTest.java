@@ -47,6 +47,21 @@ class GlobalExceptionHandlerTest {
         public void throwUnexpected() {
             throw new RuntimeException("Unexpected internal DB connection failure");
         }
+
+        @GetMapping("/items/{id}")
+        public ApiResponse<Long> getItem(@PathVariable("id") Long id) {
+            return ApiResponse.success("Found", id);
+        }
+
+        @GetMapping("/required-param")
+        public ApiResponse<String> requiredParam(@RequestParam("keyword") String keyword) {
+            return ApiResponse.success("Ok", keyword);
+        }
+
+        @GetMapping("/lock-conflict")
+        public void throwLockConflict() {
+            throw new org.springframework.dao.PessimisticLockingFailureException("Deadlock found");
+        }
     }
 
     @Data
@@ -115,5 +130,55 @@ class GlobalExceptionHandlerTest {
                 .andExpect(jsonPath("$.message").value("Operation completed"))
                 .andExpect(jsonPath("$.data").value("Sample Payload"))
                 .andExpect(jsonPath("$.timestamp").exists());
+    }
+
+    @Test
+    void shouldReturn400WhenJsonIsMalformed() throws Exception {
+        mockMvc.perform(post("/test/validate")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{invalid-json"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.message").value("Malformed JSON request or invalid field format. Please verify your request payload."));
+    }
+
+    @Test
+    void shouldReturn400WhenPathVariableTypeMismatches() throws Exception {
+        mockMvc.perform(get("/test/items/not-a-number"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.message").value("Invalid value 'not-a-number' for parameter 'id'."));
+    }
+
+    @Test
+    void shouldReturn400WhenRequiredQueryParamIsMissing() throws Exception {
+        mockMvc.perform(get("/test/required-param"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.message").value("Required query parameter 'keyword' is missing."));
+    }
+
+    @Test
+    void shouldReturn405WhenHttpMethodNotSupported() throws Exception {
+        mockMvc.perform(post("/test/success"))
+                .andExpect(status().isMethodNotAllowed())
+                .andExpect(jsonPath("$.status").value(405))
+                .andExpect(jsonPath("$.message").value("HTTP method 'POST' is not supported for this endpoint."));
+    }
+
+    @Test
+    void shouldReturn415WhenMediaTypeNotSupported() throws Exception {
+        mockMvc.perform(post("/test/validate")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content("plain text"))
+                .andExpect(status().isUnsupportedMediaType())
+                .andExpect(jsonPath("$.status").value(415));
+    }
+
+    @Test
+    void shouldReturn409WhenLockingFailureOccurs() throws Exception {
+        mockMvc.perform(get("/test/lock-conflict"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.status").value(409));
     }
 }

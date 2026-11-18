@@ -2,14 +2,14 @@ import React, { useState, useEffect, useCallback } from 'react'
 import {
   Box,
   Typography,
-  Paper,
+  Card,
+  CardContent,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
-  TablePagination,
   Button,
   Chip,
   Stack,
@@ -17,26 +17,31 @@ import {
   Skeleton,
   Tabs,
   Tab,
-  Card,
-  CardContent,
   Grid,
+  Pagination,
 } from '@mui/material'
-import MonetizationOnIcon from '@mui/icons-material/MonetizationOn'
-import PaymentIcon from '@mui/icons-material/Payment'
+import MonetizationOnOutlinedIcon from '@mui/icons-material/MonetizationOnOutlined'
+import PaymentOutlinedIcon from '@mui/icons-material/PaymentOutlined'
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
-import WarningAmberIcon from '@mui/icons-material/WarningAmber'
-import ReceiptLongIcon from '@mui/icons-material/ReceiptLong'
+import WarningAmberRoundedIcon from '@mui/icons-material/WarningAmberRounded'
+import ReceiptLongOutlinedIcon from '@mui/icons-material/ReceiptLongOutlined'
 import fineService from '../services/fineService'
 import { useAuth } from '../hooks/useAuth'
 import PayFineDialog from '../components/fines/PayFineDialog'
+import PageHeader from '../components/common/PageHeader'
+import StatusBadge from '../components/common/StatusBadge'
+import EmptyState from '../components/common/EmptyState'
 import { formatCurrency, formatDate, formatDateTime } from '../utils/formatters'
 
+/**
+ * Modern Fine Management & Settlements UI (Image 3 "spik" Table Style)
+ */
 const FinesPage = () => {
   const { user, isAdmin } = useAuth()
 
-  // State
   const [fines, setFines] = useState([])
   const [totalElements, setTotalElements] = useState(0)
+  const [totalPages, setTotalPages] = useState(1)
   const [loading, setLoading] = useState(true)
   const [apiError, setApiError] = useState(null)
   const [feedbackMessage, setFeedbackMessage] = useState(null)
@@ -47,7 +52,7 @@ const FinesPage = () => {
     unpaidFinesCount: 0,
   })
 
-  // Admin Filter Tabs: 0 = All Fines, 1 = Unpaid Fines Only
+  // 0: All fines, 1: Unpaid fines only (Admin)
   const [tabIndex, setTabIndex] = useState(0)
   const [page, setPage] = useState(0)
   const [pageSize, setPageSize] = useState(10)
@@ -56,9 +61,9 @@ const FinesPage = () => {
   const [payDialogOpen, setPayDialogOpen] = useState(false)
   const [selectedFine, setSelectedFine] = useState(null)
 
-  // Load Member Unpaid Summary
   const loadMemberSummary = useCallback(async () => {
-    const memberId = user?.id || 1
+    const memberId = user?.memberId || user?.id
+    if (!memberId) return
     try {
       const summary = await fineService.getMemberUnpaidTotal(memberId)
       setMemberSummary({
@@ -66,12 +71,10 @@ const FinesPage = () => {
         unpaidFinesCount: summary?.unpaidFinesCount || 0,
       })
     } catch (err) {
-      // If error or member has no fines yet
       setMemberSummary({ totalUnpaidAmount: 0, unpaidFinesCount: 0 })
     }
   }, [user])
 
-  // Load Fines list
   const loadFines = useCallback(async () => {
     setLoading(true)
     setApiError(null)
@@ -81,7 +84,6 @@ const FinesPage = () => {
 
       if (isAdmin) {
         if (tabIndex === 1) {
-          // Unpaid fines only
           pagedData = await fineService.getUnpaidFines({
             page,
             size: pageSize,
@@ -89,7 +91,6 @@ const FinesPage = () => {
             direction: 'DESC',
           })
         } else {
-          // All fines
           pagedData = await fineService.getAllFines({
             page,
             size: pageSize,
@@ -98,8 +99,13 @@ const FinesPage = () => {
           })
         }
       } else {
-        // Current Member Fines
-        const memberId = user?.id || 1
+        const memberId = user?.memberId || user?.id
+        if (!memberId) {
+          setFines([])
+          setTotalElements(0)
+          setTotalPages(1)
+          return
+        }
         pagedData = await fineService.getMemberFines(memberId, {
           page,
           size: pageSize,
@@ -110,10 +116,12 @@ const FinesPage = () => {
 
       setFines(pagedData.content || [])
       setTotalElements(pagedData.totalElements || 0)
+      setTotalPages(pagedData.totalPages || 1)
     } catch (err) {
       setApiError(err.message || 'Failed to retrieve fine records.')
       setFines([])
       setTotalElements(0)
+      setTotalPages(1)
     } finally {
       setLoading(false)
     }
@@ -131,456 +139,330 @@ const FinesPage = () => {
     setPage(0)
   }
 
-  const handleChangePage = (event, newPage) => {
-    setPage(newPage)
-  }
-
-  const handleChangeRowsPerPage = (event) => {
-    setPageSize(parseInt(event.target.value, 10))
-    setPage(0)
-  }
-
   const handleOpenPay = (fine) => {
     setSelectedFine(fine)
     setPayDialogOpen(true)
   }
 
-  const handlePaymentSuccess = (updatedFine) => {
-    setFeedbackMessage(
-      `Payment of ${formatCurrency(updatedFine.amount)} for Fine #${updatedFine.id} settled successfully.`
-    )
-    loadFines()
-    if (!isAdmin) {
-      loadMemberSummary()
-    }
-  }
-
   return (
     <Box>
-      {/* Page Header */}
-      <Stack
-        direction={{ xs: 'column', sm: 'row' }}
-        justifyContent="space-between"
-        alignItems={{ xs: 'flex-start', sm: 'center' }}
-        spacing={2}
-        mb={3}
-      >
-        <Box>
-          <Typography variant="h4" component="h1" fontWeight={700} gutterBottom>
-            {isAdmin ? 'Fine Assessments & Receivables' : 'My Library Fines & Penalties'}
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            {isAdmin
-              ? 'Track overdue penalties, audit settlement receipts, and clear pending dues.'
-              : 'View your late return assessment records, outstanding balances, and make online payments.'}
-          </Typography>
-        </Box>
-      </Stack>
+      <PageHeader
+        title={isAdmin ? 'Fine Assessments & Revenues' : 'My Fines & Fees'}
+        subtitle={
+          isAdmin
+            ? 'Monitor accrued late return fines and record official fee payment receipts'
+            : 'Review your accrued overdue penalties and fee settlement history'
+        }
+        breadcrumbs={[{ label: 'Fines', path: null }]}
+      />
 
-      {/* KPI Cards */}
-      <Grid container spacing={2.5} sx={{ mb: 3 }}>
-        {!isAdmin ? (
-          <>
-            <Grid item xs={12} sm={6} md={4}>
-              <Card elevation={2} sx={{ borderRadius: 2 }}>
-                <CardContent>
-                  <Stack direction="row" alignItems="center" spacing={2}>
-                    <Box
-                      sx={{
-                        p: 1.5,
-                        borderRadius: 2,
-                        bgcolor: memberSummary.totalUnpaidAmount > 0 ? 'error.lighter' : 'success.lighter',
-                        color: memberSummary.totalUnpaidAmount > 0 ? 'error.main' : 'success.main',
-                        display: 'flex',
-                      }}
-                    >
-                      <MonetizationOnIcon fontSize="large" />
-                    </Box>
-                    <Box>
-                      <Typography variant="caption" color="text.secondary" fontWeight={600} textTransform="uppercase">
-                        Outstanding Balance
-                      </Typography>
-                      <Typography
-                        variant="h5"
-                        fontWeight={800}
-                        color={memberSummary.totalUnpaidAmount > 0 ? 'error.dark' : 'text.primary'}
-                      >
-                        {formatCurrency(memberSummary.totalUnpaidAmount)}
-                      </Typography>
-                    </Box>
-                  </Stack>
-                </CardContent>
-              </Card>
-            </Grid>
-
-            <Grid item xs={12} sm={6} md={4}>
-              <Card elevation={2} sx={{ borderRadius: 2 }}>
-                <CardContent>
-                  <Stack direction="row" alignItems="center" spacing={2}>
-                    <Box
-                      sx={{
-                        p: 1.5,
-                        borderRadius: 2,
-                        bgcolor: memberSummary.unpaidFinesCount > 0 ? 'warning.lighter' : 'info.lighter',
-                        color: memberSummary.unpaidFinesCount > 0 ? 'warning.main' : 'info.main',
-                        display: 'flex',
-                      }}
-                    >
-                      <ReceiptLongIcon fontSize="large" />
-                    </Box>
-                    <Box>
-                      <Typography variant="caption" color="text.secondary" fontWeight={600} textTransform="uppercase">
-                        Unpaid Penalties
-                      </Typography>
-                      <Typography variant="h5" fontWeight={800}>
-                        {memberSummary.unpaidFinesCount}
-                      </Typography>
-                    </Box>
-                  </Stack>
-                </CardContent>
-              </Card>
-            </Grid>
-
-            <Grid item xs={12} sm={12} md={4}>
-              <Card elevation={2} sx={{ borderRadius: 2 }}>
-                <CardContent>
-                  <Stack direction="row" alignItems="center" spacing={2}>
-                    <Box
-                      sx={{
-                        p: 1.5,
-                        borderRadius: 2,
-                        bgcolor: memberSummary.totalUnpaidAmount === 0 ? 'success.lighter' : 'error.lighter',
-                        color: memberSummary.totalUnpaidAmount === 0 ? 'success.main' : 'error.main',
-                        display: 'flex',
-                      }}
-                    >
-                      {memberSummary.totalUnpaidAmount === 0 ? (
-                        <CheckCircleOutlineIcon fontSize="large" />
-                      ) : (
-                        <WarningAmberIcon fontSize="large" />
-                      )}
-                    </Box>
-                    <Box>
-                      <Typography variant="caption" color="text.secondary" fontWeight={600} textTransform="uppercase">
-                        Account Status
-                      </Typography>
-                      <Typography
-                        variant="subtitle1"
-                        fontWeight={700}
-                        color={memberSummary.totalUnpaidAmount === 0 ? 'success.main' : 'error.main'}
-                      >
-                        {memberSummary.totalUnpaidAmount === 0 ? 'In Good Standing' : 'Settlement Required'}
-                      </Typography>
-                    </Box>
-                  </Stack>
-                </CardContent>
-              </Card>
-            </Grid>
-          </>
-        ) : (
-          <>
-            <Grid item xs={12} sm={6} md={4}>
-              <Card elevation={2} sx={{ borderRadius: 2 }}>
-                <CardContent>
-                  <Stack direction="row" alignItems="center" spacing={2}>
-                    <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: 'primary.lighter', color: 'primary.main', display: 'flex' }}>
-                      <ReceiptLongIcon fontSize="large" />
-                    </Box>
-                    <Box>
-                      <Typography variant="caption" color="text.secondary" fontWeight={600} textTransform="uppercase">
-                        Total Recorded Fines
-                      </Typography>
-                      <Typography variant="h5" fontWeight={800}>
-                        {totalElements}
-                      </Typography>
-                    </Box>
-                  </Stack>
-                </CardContent>
-              </Card>
-            </Grid>
-
-            <Grid item xs={12} sm={6} md={4}>
-              <Card elevation={2} sx={{ borderRadius: 2 }}>
-                <CardContent>
-                  <Stack direction="row" alignItems="center" spacing={2}>
-                    <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: 'error.lighter', color: 'error.main', display: 'flex' }}>
-                      <MonetizationOnIcon fontSize="large" />
-                    </Box>
-                    <Box>
-                      <Typography variant="caption" color="text.secondary" fontWeight={600} textTransform="uppercase">
-                        System Policy Rate
-                      </Typography>
-                      <Typography variant="h5" fontWeight={800}>
-                        ₹5.00 / day
-                      </Typography>
-                    </Box>
-                  </Stack>
-                </CardContent>
-              </Card>
-            </Grid>
-
-            <Grid item xs={12} sm={12} md={4}>
-              <Card elevation={2} sx={{ borderRadius: 2 }}>
-                <CardContent>
-                  <Stack direction="row" alignItems="center" spacing={2}>
-                    <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: 'success.lighter', color: 'success.main', display: 'flex' }}>
-                      <CheckCircleOutlineIcon fontSize="large" />
-                    </Box>
-                    <Box>
-                      <Typography variant="caption" color="text.secondary" fontWeight={600} textTransform="uppercase">
-                        Settlement Method
-                      </Typography>
-                      <Typography variant="subtitle1" fontWeight={700}>
-                        Instant / Real-time
-                      </Typography>
-                    </Box>
-                  </Stack>
-                </CardContent>
-              </Card>
-            </Grid>
-          </>
-        )}
-      </Grid>
-
-      {/* Alerts */}
       {feedbackMessage && (
-        <Alert severity="success" onClose={() => setFeedbackMessage(null)} sx={{ mb: 2 }}>
+        <Alert severity="success" sx={{ mb: 3, borderRadius: 2.5 }} onClose={() => setFeedbackMessage(null)}>
           {feedbackMessage}
         </Alert>
       )}
 
       {apiError && (
-        <Alert severity="error" onClose={() => setApiError(null)} sx={{ mb: 2 }}>
+        <Alert severity="error" sx={{ mb: 3, borderRadius: 2.5 }} onClose={() => setApiError(null)}>
           {apiError}
         </Alert>
       )}
 
-      {/* Admin Tabs Filter */}
-      {isAdmin && (
-        <Paper elevation={1} sx={{ mb: 3, borderRadius: 2 }}>
-          <Tabs
-            value={tabIndex}
-            onChange={handleTabChange}
-            indicatorColor="primary"
-            textColor="primary"
-            sx={{ px: 2 }}
-          >
-            <Tab label="All Fine Records" sx={{ textTransform: 'none', fontWeight: 600 }} />
-            <Tab
-              label="Unpaid Fines Only"
-              icon={<WarningAmberIcon fontSize="small" />}
-              iconPosition="end"
-              sx={{ textTransform: 'none', fontWeight: 600 }}
-            />
-          </Tabs>
-        </Paper>
+      {/* Member Balance Card */}
+      {!isAdmin && (
+        <Card sx={{ mb: 3.5, borderRadius: 3.5, border: '1px solid #e2e8f0', p: 3, bgcolor: '#ffffff' }}>
+          <Grid container spacing={3} alignItems="center">
+            <Grid item xs={12} sm={6}>
+              <Stack direction="row" alignItems="center" spacing={2}>
+                <Box
+                  sx={{
+                    width: 48,
+                    height: 48,
+                    borderRadius: 3,
+                    bgcolor: memberSummary.totalUnpaidAmount > 0 ? '#fee2e2' : '#dcfce7',
+                    color: memberSummary.totalUnpaidAmount > 0 ? '#dc2626' : '#16a34a',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <MonetizationOnOutlinedIcon sx={{ fontSize: 26 }} />
+                </Box>
+                <Box>
+                  <Typography variant="caption" sx={{ color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
+                    Outstanding Balance
+                  </Typography>
+                  <Typography variant="h4" fontWeight={800} color={memberSummary.totalUnpaidAmount > 0 ? '#dc2626' : '#16a34a'}>
+                    {formatCurrency(memberSummary.totalUnpaidAmount)}
+                  </Typography>
+                </Box>
+              </Stack>
+            </Grid>
+
+            <Grid item xs={12} sm={6}>
+              <Box textAlign={{ xs: 'left', sm: 'right' }}>
+                <Typography variant="body2" sx={{ color: '#64748b', mb: 0.5 }}>
+                  {memberSummary.unpaidFinesCount > 0
+                    ? `${memberSummary.unpaidFinesCount} unpaid fine record(s). Please clear fines at the library circulation desk.`
+                    : 'Your account is in good standing with zero overdue penalties.'}
+                </Typography>
+                {memberSummary.totalUnpaidAmount > 0 ? (
+                  <Chip
+                    label="Payment Required at Desk"
+                    size="small"
+                    sx={{ fontWeight: 700, bgcolor: '#fee2e2', color: '#b91c1c', borderRadius: 2 }}
+                  />
+                ) : (
+                  <Chip
+                    label="Good Standing"
+                    size="small"
+                    sx={{ fontWeight: 700, bgcolor: '#dcfce7', color: '#15803d', borderRadius: 2 }}
+                  />
+                )}
+              </Box>
+            </Grid>
+          </Grid>
+        </Card>
       )}
 
-      {/* Fines Table */}
-      <TableContainer component={Paper} elevation={2} sx={{ borderRadius: 2, overflow: 'hidden' }}>
-        <Table aria-label="library fines management table">
-          <TableHead sx={{ bgcolor: 'background.default' }}>
-            <TableRow>
-              <TableCell sx={{ fontWeight: 700 }}>Fine ID</TableCell>
-              {isAdmin && <TableCell sx={{ fontWeight: 700 }}>Member</TableCell>}
-              <TableCell sx={{ fontWeight: 700 }}>Book Title</TableCell>
-              <TableCell align="center" sx={{ fontWeight: 700 }}>
-                Overdue Days
-              </TableCell>
-              <TableCell align="right" sx={{ fontWeight: 700 }}>
-                Amount
-              </TableCell>
-              <TableCell align="center" sx={{ fontWeight: 700 }}>
-                Status
-              </TableCell>
-              <TableCell sx={{ fontWeight: 700 }}>Assessed Date</TableCell>
-              <TableCell sx={{ fontWeight: 700 }}>Paid Date</TableCell>
-              <TableCell align="right" sx={{ fontWeight: 700 }}>
-                Action
-              </TableCell>
-            </TableRow>
-          </TableHead>
+      {/* Main Table Card (Image 3 Style) */}
+      <Card sx={{ borderRadius: 4, border: '1px solid #e2e8f0', p: { xs: 2, sm: 3.5 } }}>
+        {/* Toolbar Header */}
+        <Stack
+          direction={{ xs: 'column', sm: 'row' }}
+          justifyContent="space-between"
+          alignItems={{ xs: 'flex-start', sm: 'center' }}
+          spacing={2}
+          mb={3}
+        >
+          {isAdmin ? (
+            <Tabs
+              value={tabIndex}
+              onChange={handleTabChange}
+              sx={{
+                '& .MuiTab-root': {
+                  borderRadius: 2.5,
+                  minHeight: 40,
+                  px: 2,
+                  py: 0.5,
+                  fontWeight: 700,
+                  fontSize: '0.875rem',
+                },
+                '& .Mui-selected': {
+                  bgcolor: '#eff6ff',
+                  color: '#2563eb !important',
+                },
+              }}
+            >
+              <Tab label={`All Fines (${tabIndex === 0 ? totalElements : '•'})`} />
+              <Tab
+                icon={<WarningAmberRoundedIcon sx={{ fontSize: 16 }} />}
+                iconPosition="start"
+                label="Unpaid Only"
+              />
+            </Tabs>
+          ) : (
+            <Stack direction="row" alignItems="center" spacing={1.5}>
+              <Typography variant="h6" fontWeight={800} color="#0f172a">
+                Fine Records
+              </Typography>
+              <Chip
+                label={`${totalElements} entries`}
+                size="small"
+                sx={{ fontWeight: 700, bgcolor: '#eff6ff', color: '#2563eb', borderRadius: 2 }}
+              />
+            </Stack>
+          )}
 
-          <TableBody>
-            {loading ? (
-              // Skeleton loading rows
-              Array.from({ length: pageSize }).map((_, idx) => (
-                <TableRow key={idx}>
-                  <TableCell>
-                    <Skeleton variant="text" width={40} />
-                  </TableCell>
-                  {isAdmin && (
-                    <TableCell>
-                      <Skeleton variant="text" width="60%" />
-                      <Skeleton variant="text" width="40%" />
-                    </TableCell>
-                  )}
-                  <TableCell>
-                    <Skeleton variant="text" width="70%" />
-                    <Skeleton variant="text" width="45%" />
-                  </TableCell>
-                  <TableCell align="center">
-                    <Skeleton variant="text" width={50} sx={{ mx: 'auto' }} />
-                  </TableCell>
-                  <TableCell align="right">
-                    <Skeleton variant="text" width={60} sx={{ ml: 'auto' }} />
-                  </TableCell>
-                  <TableCell align="center">
-                    <Skeleton variant="rectangular" width={70} height={24} sx={{ mx: 'auto', borderRadius: 4 }} />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton variant="text" width={80} />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton variant="text" width={80} />
-                  </TableCell>
-                  <TableCell align="right">
-                    <Skeleton variant="rectangular" width={80} height={32} sx={{ ml: 'auto' }} />
-                  </TableCell>
-                </TableRow>
-              ))
-            ) : fines.length > 0 ? (
-              fines.map((fine) => {
-                const isPaid = fine.status === 'PAID'
+          <Typography variant="caption" sx={{ color: '#64748b', fontWeight: 600 }}>
+            Standard rate: ₹5.00 / overdue day
+          </Typography>
+        </Stack>
 
-                return (
-                  <TableRow key={fine.id} hover>
-                    {/* ID */}
-                    <TableCell>
-                      <Typography variant="body2" fontWeight={700} color="text.secondary">
-                        #{fine.id}
-                      </Typography>
-                    </TableCell>
-
-                    {/* Member (Admin View) */}
-                    {isAdmin && (
+        {/* Data Table (Image 3 Style) */}
+        <TableContainer sx={{ overflowX: 'auto' }}>
+          <Table>
+            <TableHead>
+              <TableRow>
+                <TableCell>Fine ID</TableCell>
+                <TableCell>Amount</TableCell>
+                <TableCell>Related Loan Book</TableCell>
+                {isAdmin && <TableCell>Patron Member</TableCell>}
+                <TableCell>Assessed Date</TableCell>
+                <TableCell>Settled Date</TableCell>
+                <TableCell align="center">Status</TableCell>
+                <TableCell align="right">Action</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {loading ? (
+                [1, 2, 3, 4, 5].map((i) => (
+                  <TableRow key={i}>
+                    <TableCell><Skeleton width={40} /></TableCell>
+                    <TableCell><Skeleton width={70} /></TableCell>
+                    <TableCell><Skeleton width={180} height={32} /></TableCell>
+                    {isAdmin && <TableCell><Skeleton width={120} /></TableCell>}
+                    <TableCell><Skeleton width={90} /></TableCell>
+                    <TableCell><Skeleton width={90} /></TableCell>
+                    <TableCell align="center"><Skeleton width={70} /></TableCell>
+                    <TableCell align="right"><Skeleton width={90} /></TableCell>
+                  </TableRow>
+                ))
+              ) : fines.length > 0 ? (
+                fines.map((fine) => {
+                  const isUnpaid = fine.status === 'UNPAID'
+                  return (
+                    <TableRow key={fine.id} hover sx={{ '&:last-child td': { border: 0 } }}>
+                      {/* ID Chip */}
                       <TableCell>
-                        <Typography variant="body2" fontWeight={600}>
-                          {fine.member?.fullName || 'Member'}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {fine.member?.email}
+                        <Chip
+                          label={`#${fine.id}`}
+                          size="small"
+                          sx={{ fontWeight: 700, bgcolor: '#f1f5f9', color: '#475569', borderRadius: 1.5 }}
+                        />
+                      </TableCell>
+
+                      {/* Amount */}
+                      <TableCell>
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            fontWeight: 800,
+                            color: isUnpaid ? '#dc2626' : '#16a34a',
+                            fontSize: '0.9375rem',
+                          }}
+                        >
+                          {formatCurrency(fine.fineAmount)}
                         </Typography>
                       </TableCell>
-                    )}
 
-                    {/* Book Details */}
-                    <TableCell>
-                      <Typography variant="subtitle2" fontWeight={600} color="primary.main">
-                        {fine.book?.title || 'Unknown Title'}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        by {fine.book?.author || 'Unknown Author'} (ISBN: {fine.book?.isbn})
-                      </Typography>
-                    </TableCell>
-
-                    {/* Overdue Days */}
-                    <TableCell align="center">
-                      <Typography variant="body2" fontWeight={600} color="error.main">
-                        {fine.overdueDays} day{fine.overdueDays === 1 ? '' : 's'}
-                      </Typography>
-                    </TableCell>
-
-                    {/* Amount */}
-                    <TableCell align="right">
-                      <Typography variant="body2" fontWeight={800} color={isPaid ? 'text.primary' : 'error.dark'}>
-                        {formatCurrency(fine.amount)}
-                      </Typography>
-                    </TableCell>
-
-                    {/* Status Chip */}
-                    <TableCell align="center">
-                      {isPaid ? (
-                        <Chip
-                          icon={<CheckCircleOutlineIcon style={{ fontSize: 14 }} />}
-                          label="PAID"
-                          size="small"
-                          color="success"
-                          variant="outlined"
-                          sx={{ fontWeight: 700, fontSize: '0.72rem' }}
-                        />
-                      ) : (
-                        <Chip
-                          icon={<WarningAmberIcon style={{ fontSize: 14 }} />}
-                          label="UNPAID"
-                          size="small"
-                          color="error"
-                          sx={{ fontWeight: 700, fontSize: '0.72rem' }}
-                        />
-                      )}
-                    </TableCell>
-
-                    {/* Assessed Date */}
-                    <TableCell>
-                      <Typography variant="body2">{formatDate(fine.calculatedAt)}</Typography>
-                    </TableCell>
-
-                    {/* Paid Date */}
-                    <TableCell>
-                      <Typography variant="body2" color={isPaid ? 'success.main' : 'text.secondary'}>
-                        {fine.paidAt ? formatDateTime(fine.paidAt) : '-'}
-                      </Typography>
-                    </TableCell>
-
-                    {/* Action */}
-                    <TableCell align="right">
-                      {!isPaid ? (
-                        <Button
-                          variant="contained"
-                          size="small"
-                          color="success"
-                          startIcon={<PaymentIcon />}
-                          onClick={() => handleOpenPay(fine)}
-                          sx={{ textTransform: 'none', fontWeight: 600 }}
-                        >
-                          Pay Fine
-                        </Button>
-                      ) : (
-                        <Typography variant="caption" color="success.main" fontWeight={600}>
-                          Settled
+                      {/* Related Loan Book */}
+                      <TableCell>
+                        <Typography variant="body2" sx={{ fontWeight: 600, color: '#0f172a' }}>
+                          {fine.bookTitle || `Borrowing #${fine.borrowingId}`}
                         </Typography>
+                      </TableCell>
+
+                      {/* Patron (If Admin) */}
+                      {isAdmin && (
+                        <TableCell>
+                          <Typography variant="body2" sx={{ fontWeight: 500, color: '#334155' }}>
+                            {fine.memberName || `Member #${fine.memberId}`}
+                          </Typography>
+                        </TableCell>
                       )}
-                    </TableCell>
-                  </TableRow>
-                )
-              })
-            ) : (
-              // Empty State
-              <TableRow>
-                <TableCell colSpan={isAdmin ? 9 : 8} align="center" sx={{ py: 6 }}>
-                  <Typography variant="subtitle1" fontWeight={600} gutterBottom>
-                    No fine records found.
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {tabIndex === 1
-                      ? 'Great! There are no unpaid library fines at this time.'
-                      : 'No fines or overdue penalties have been recorded.'}
-                  </Typography>
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
 
-        {/* Pagination */}
-        <TablePagination
-          rowsPerPageOptions={[5, 10, 25, 50]}
-          component="div"
-          count={totalElements}
-          rowsPerPage={pageSize}
-          page={page}
-          onPageChange={handleChangePage}
-          onRowsPerPageChange={handleChangeRowsPerPage}
+                      <TableCell sx={{ color: '#64748b', fontSize: '0.8125rem' }}>
+                        {formatDate(fine.calculatedAt)}
+                      </TableCell>
+                      <TableCell sx={{ color: '#64748b', fontSize: '0.8125rem' }}>
+                        {fine.paidAt ? formatDate(fine.paidAt) : '—'}
+                      </TableCell>
+
+                      {/* StatusBadge */}
+                      <TableCell align="center">
+                        <StatusBadge status={fine.status} />
+                      </TableCell>
+
+                      {/* Actions */}
+                      <TableCell align="right">
+                        {isUnpaid ? (
+                          isAdmin ? (
+                            <Button
+                              size="small"
+                              variant="contained"
+                              startIcon={<PaymentOutlinedIcon fontSize="small" />}
+                              onClick={() => handleOpenPay(fine)}
+                              sx={{
+                                borderRadius: 2,
+                                fontWeight: 700,
+                                fontSize: '0.75rem',
+                                bgcolor: '#16a34a',
+                                '&:hover': { bgcolor: '#15803d' },
+                              }}
+                            >
+                              Record Payment
+                            </Button>
+                          ) : (
+                            <Chip
+                              label="Pay at Desk"
+                              size="small"
+                              sx={{
+                                fontWeight: 700,
+                                fontSize: '0.6875rem',
+                                bgcolor: '#fee2e2',
+                                color: '#b91c1c',
+                                borderRadius: 1.5,
+                              }}
+                            />
+                          )
+                        ) : (
+                          <Chip
+                            icon={<CheckCircleOutlineIcon sx={{ fontSize: '14px !important', color: '#16a34a' }} />}
+                            label={fine.paymentMethod ? `${fine.paymentMethod}` : 'Settled'}
+                            size="small"
+                            sx={{
+                              fontWeight: 600,
+                              fontSize: '0.6875rem',
+                              bgcolor: '#dcfce7',
+                              color: '#15803d',
+                              borderRadius: 1.5,
+                            }}
+                          />
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  )
+                })
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={isAdmin ? 8 : 7} sx={{ p: 4 }}>
+                    <EmptyState
+                      title="No fine records"
+                      description={
+                        tabIndex === 1
+                          ? 'Zero unpaid fines pending collection. All patron balances are clear.'
+                          : 'No fine records exist matching this account.'
+                      }
+                    />
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </TableContainer>
+
+        {/* Numbered Pill Pagination (Image 3 Style) */}
+        {totalPages > 1 && (
+          <Box sx={{ mt: 3, pt: 2, borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'center' }}>
+            <Pagination
+              count={totalPages}
+              page={page + 1}
+              onChange={(e, p) => setPage(p - 1)}
+              color="primary"
+              shape="rounded"
+              sx={{
+                '& .MuiPaginationItem-root': { borderRadius: 2, fontWeight: 600 },
+                '& .Mui-selected': { bgcolor: '#2563eb !important', color: '#ffffff' },
+              }}
+            />
+          </Box>
+        )}
+      </Card>
+
+      {/* Pay Fine Dialog */}
+      {payDialogOpen && (
+        <PayFineDialog
+          open={payDialogOpen}
+          onClose={() => setPayDialogOpen(false)}
+          fine={selectedFine}
+          onPaymentSuccess={() => {
+            setFeedbackMessage('Payment recorded and fine settled successfully.')
+            setPayDialogOpen(false)
+            loadFines()
+          }}
         />
-      </TableContainer>
-
-      {/* Pay Fine Modal */}
-      <PayFineDialog
-        open={payDialogOpen}
-        onClose={() => setPayDialogOpen(false)}
-        fine={selectedFine}
-        onPaymentSuccess={handlePaymentSuccess}
-      />
+      )}
     </Box>
   )
 }

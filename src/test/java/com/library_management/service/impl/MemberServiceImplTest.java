@@ -332,4 +332,91 @@ class MemberServiceImplTest {
         assertTrue(ex.getMessage().contains("unpaid fine(s)"));
         verify(memberRepository, never()).delete(any(Member.class));
     }
+
+    @Test
+    @DisplayName("Should sync linked User email, name, and enabled status when updating member")
+    void testUpdateMember_SyncsLinkedUser() {
+        User linkedUser = User.builder()
+                .id(10L)
+                .name("John Doe")
+                .email("john.doe@example.com")
+                .role(Role.MEMBER)
+                .enabled(true)
+                .build();
+
+        MemberRequestDto updateRequest = MemberRequestDto.builder()
+                .firstName("Jonathan")
+                .lastName("Smith")
+                .email("jonathan.smith@example.com")
+                .phoneNumber("+91 9876543210")
+                .address("456 New Street")
+                .active(false)
+                .build();
+
+        when(memberRepository.findById(1L)).thenReturn(Optional.of(sampleMember));
+        when(memberRepository.existsByEmailAndIdNot("jonathan.smith@example.com", 1L)).thenReturn(false);
+        when(userRepository.findByEmail("john.doe@example.com")).thenReturn(Optional.of(linkedUser));
+        when(userRepository.findByEmail("jonathan.smith@example.com")).thenReturn(Optional.empty());
+        when(memberRepository.save(any(Member.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        MemberResponseDto response = memberService.updateMember(1L, updateRequest);
+
+        assertEquals("jonathan.smith@example.com", response.getEmail());
+        assertEquals("jonathan.smith@example.com", linkedUser.getEmail());
+        assertEquals("Jonathan Smith", linkedUser.getName());
+        assertFalse(linkedUser.getEnabled());
+        verify(userRepository, times(1)).save(linkedUser);
+    }
+
+    @Test
+    @DisplayName("Should reject updating member email if another User already owns that email")
+    void testUpdateMember_ConflictingUserEmail_ThrowsDuplicate() {
+        User otherUser = User.builder().id(20L).email("other@example.com").role(Role.MEMBER).build();
+
+        MemberRequestDto updateRequest = MemberRequestDto.builder()
+                .firstName("John")
+                .lastName("Doe")
+                .email("other@example.com")
+                .phoneNumber("+91 9876543210")
+                .build();
+
+        when(memberRepository.findById(1L)).thenReturn(Optional.of(sampleMember));
+        when(memberRepository.existsByEmailAndIdNot("other@example.com", 1L)).thenReturn(false);
+        when(userRepository.findByEmail("john.doe@example.com")).thenReturn(Optional.empty());
+        when(userRepository.findByEmail("other@example.com")).thenReturn(Optional.of(otherUser));
+
+        assertThrows(DuplicateResourceException.class, () -> memberService.updateMember(1L, updateRequest));
+        verify(memberRepository, never()).save(any(Member.class));
+    }
+
+    @Test
+    @DisplayName("Should disable linked User when deactivating member")
+    void testDeactivateMember_DisablesLinkedUser() {
+        User linkedUser = User.builder().id(10L).email("john.doe@example.com").role(Role.MEMBER).enabled(true).build();
+        when(memberRepository.findById(1L)).thenReturn(Optional.of(sampleMember));
+        when(memberRepository.save(any(Member.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(userRepository.findByEmail("john.doe@example.com")).thenReturn(Optional.of(linkedUser));
+
+        MemberResponseDto response = memberService.deactivateMember(1L);
+
+        assertFalse(response.getActive());
+        assertFalse(linkedUser.getEnabled());
+        verify(userRepository, times(1)).save(linkedUser);
+    }
+
+    @Test
+    @DisplayName("Should reactivate member and re-enable linked User")
+    void testActivateMember_ReenablesLinkedUser() {
+        sampleMember.setActive(false);
+        User linkedUser = User.builder().id(10L).email("john.doe@example.com").role(Role.MEMBER).enabled(false).build();
+        when(memberRepository.findById(1L)).thenReturn(Optional.of(sampleMember));
+        when(memberRepository.save(any(Member.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(userRepository.findByEmail("john.doe@example.com")).thenReturn(Optional.of(linkedUser));
+
+        MemberResponseDto response = memberService.activateMember(1L);
+
+        assertTrue(response.getActive());
+        assertTrue(linkedUser.getEnabled());
+        verify(userRepository, times(1)).save(linkedUser);
+    }
 }

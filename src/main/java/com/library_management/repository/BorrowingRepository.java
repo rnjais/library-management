@@ -2,10 +2,12 @@ package com.library_management.repository;
 
 import com.library_management.entity.Borrowing;
 import com.library_management.entity.BorrowingStatus;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -32,6 +34,17 @@ public interface BorrowingRepository extends JpaRepository<Borrowing, Long> {
     @Override
     @EntityGraph(attributePaths = {"book", "member"})
     Optional<Borrowing> findById(Long id);
+
+    /**
+     * Fetches a borrowing record with a PESSIMISTIC_WRITE lock (SELECT ... FOR UPDATE)
+     * to serialize concurrent book return attempts and prevent double inventory increments.
+     *
+     * @param id The borrowing record ID.
+     * @return Optional containing the locked Borrowing with Book and Member fetched.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT b FROM Borrowing b JOIN FETCH b.book JOIN FETCH b.member WHERE b.id = :id")
+    Optional<Borrowing> findByIdWithPessimisticLock(@Param("id") Long id);
 
     /**
      * Retrieves all borrowings with pagination, eagerly fetching Book and Member.
@@ -132,6 +145,14 @@ public interface BorrowingRepository extends JpaRepository<Borrowing, Long> {
     long countByMemberIdAndReturnDateIsNull(Long memberId);
 
     /**
+     * Counts how many active (unreturned) copies of a specific book are currently checked out.
+     *
+     * @param bookId The ID of the book.
+     * @return Total count of active borrowings for this book.
+     */
+    long countByBookIdAndReturnDateIsNull(Long bookId);
+
+    /**
      * Batch updates status of unreturned loans past their due date from BORROWED to OVERDUE.
      *
      * @param overdueStatus Target status (OVERDUE).
@@ -139,7 +160,7 @@ public interface BorrowingRepository extends JpaRepository<Borrowing, Long> {
      * @param currentDate Reference date (e.g. LocalDate.now()).
      * @return Number of records updated.
      */
-    @Modifying
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("UPDATE Borrowing b SET b.status = :overdueStatus " +
            "WHERE b.status = :borrowedStatus AND b.returnDate IS NULL AND b.dueDate < :currentDate")
     int updateOverdueStatus(@Param("overdueStatus") BorrowingStatus overdueStatus,
@@ -201,7 +222,16 @@ public interface BorrowingRepository extends JpaRepository<Borrowing, Long> {
      *
      * @param memberId The member ID.
      */
-    @Modifying
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("DELETE FROM Borrowing b WHERE b.member.id = :memberId")
     void deleteByMemberId(@Param("memberId") Long memberId);
+
+    /**
+     * Deletes all historical borrowing records associated with a book.
+     *
+     * @param bookId The book ID.
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("DELETE FROM Borrowing b WHERE b.book.id = :bookId")
+    void deleteByBookId(@Param("bookId") Long bookId);
 }

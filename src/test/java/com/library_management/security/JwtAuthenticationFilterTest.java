@@ -2,6 +2,8 @@ package com.library_management.security;
 
 import com.library_management.entity.Role;
 import com.library_management.entity.User;
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.Jwts;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import org.junit.jupiter.api.AfterEach;
@@ -86,10 +88,11 @@ class JwtAuthenticationFilterTest {
     @Test
     void shouldAuthenticateWhenValidTokenProvided() throws ServletException, IOException {
         request.addHeader("Authorization", "Bearer valid.jwt.token");
+        Claims claims = Jwts.claims().subject("alice@example.com").build();
 
-        when(jwtService.extractUsername("valid.jwt.token")).thenReturn("alice@example.com");
+        when(jwtService.extractAllClaims("valid.jwt.token")).thenReturn(claims);
         when(userDetailsService.loadUserByUsername("alice@example.com")).thenReturn(sampleUser);
-        when(jwtService.isTokenValid("valid.jwt.token", sampleUser)).thenReturn(true);
+        when(jwtService.isTokenValid(claims, sampleUser)).thenReturn(true);
 
         jwtAuthenticationFilter.doFilterInternal(request, response, filterChain);
 
@@ -97,15 +100,33 @@ class JwtAuthenticationFilterTest {
         assertNotNull(SecurityContextHolder.getContext().getAuthentication());
         assertEquals("alice@example.com", SecurityContextHolder.getContext().getAuthentication().getName());
         assertEquals(sampleUser, SecurityContextHolder.getContext().getAuthentication().getPrincipal());
+        verify(jwtService, times(1)).extractAllClaims("valid.jwt.token");
+    }
+
+    @Test
+    void shouldRejectJwtWhenUserAccountIsDisabled() throws ServletException, IOException {
+        request.addHeader("Authorization", "Bearer valid.jwt.token");
+        sampleUser.setEnabled(false);
+        Claims claims = Jwts.claims().subject("alice@example.com").build();
+
+        when(jwtService.extractAllClaims("valid.jwt.token")).thenReturn(claims);
+        when(userDetailsService.loadUserByUsername("alice@example.com")).thenReturn(sampleUser);
+
+        jwtAuthenticationFilter.doFilterInternal(request, response, filterChain);
+
+        verify(filterChain, times(1)).doFilter(request, response);
+        assertNull(SecurityContextHolder.getContext().getAuthentication());
+        verify(jwtService, never()).isTokenValid(any(Claims.class), any());
     }
 
     @Test
     void shouldNotAuthenticateWhenTokenInvalid() throws ServletException, IOException {
         request.addHeader("Authorization", "Bearer invalid.jwt.token");
+        Claims claims = Jwts.claims().subject("alice@example.com").build();
 
-        when(jwtService.extractUsername("invalid.jwt.token")).thenReturn("alice@example.com");
+        when(jwtService.extractAllClaims("invalid.jwt.token")).thenReturn(claims);
         when(userDetailsService.loadUserByUsername("alice@example.com")).thenReturn(sampleUser);
-        when(jwtService.isTokenValid("invalid.jwt.token", sampleUser)).thenReturn(false);
+        when(jwtService.isTokenValid(claims, sampleUser)).thenReturn(false);
 
         jwtAuthenticationFilter.doFilterInternal(request, response, filterChain);
 
@@ -116,12 +137,13 @@ class JwtAuthenticationFilterTest {
     @Test
     void shouldNotReauthenticateWhenContextAlreadyHasAuthentication() throws ServletException, IOException {
         request.addHeader("Authorization", "Bearer valid.jwt.token");
+        Claims claims = Jwts.claims().subject("alice@example.com").build();
 
         UsernamePasswordAuthenticationToken existingAuth =
                 new UsernamePasswordAuthenticationToken("existing@example.com", null, sampleUser.getAuthorities());
         SecurityContextHolder.getContext().setAuthentication(existingAuth);
 
-        when(jwtService.extractUsername("valid.jwt.token")).thenReturn("alice@example.com");
+        when(jwtService.extractAllClaims("valid.jwt.token")).thenReturn(claims);
 
         jwtAuthenticationFilter.doFilterInternal(request, response, filterChain);
 

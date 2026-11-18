@@ -6,6 +6,7 @@ import com.library_management.dto.response.FineResponseDto;
 import com.library_management.dto.response.MemberUnpaidFineResponseDto;
 import com.library_management.dto.response.PagedResponse;
 import com.library_management.service.FineService;
+import com.library_management.util.PaginationUtils;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -16,6 +17,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 /**
@@ -172,11 +174,13 @@ public class FineController {
      * @return 200 OK with the updated FineResponseDto wrapped in ApiResponse.
      */
     @PatchMapping("/{id}/pay")
-    @Operation(summary = "Pay fine", description = "Marks an unpaid fine record as PAID. Roles: ADMIN, MEMBER.")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Pay fine", description = "Marks an unpaid fine record as PAID and records payment audit metadata. Requires ADMIN role.")
     @ApiResponses(value = {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Fine marked as paid successfully"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Fine has already been paid"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Fine not found with specified ID")
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Forbidden: Requires ADMIN role"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Fine not found with specified ID"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "Fine has already been paid")
     })
     public ResponseEntity<ApiResponse<FineResponseDto>> payFine(
             @Parameter(description = "Unique ID of the fine to pay") @PathVariable("id") Long id,
@@ -189,15 +193,8 @@ public class FineController {
      * Helper method to validate pagination parameters and construct a Pageable instance.
      */
     private Pageable buildPageable(int page, int size, String sortBy, String direction) {
-        if (page < 0) {
-            throw new IllegalArgumentException("Page index cannot be negative");
-        }
-        if (size <= 0 || size > 100) {
-            throw new IllegalArgumentException("Page size must be between 1 and 100");
-        }
-        Sort.Direction sortDirection = direction != null && direction.equalsIgnoreCase("DESC")
-                ? Sort.Direction.DESC
-                : Sort.Direction.ASC;
-        return PageRequest.of(page, size, Sort.by(sortDirection, sortBy));
+        return PaginationUtils.buildPageable(
+                page, size, sortBy, direction, PaginationUtils.FINE_SORT_FIELDS, Sort.Direction.ASC
+        );
     }
 }

@@ -5,6 +5,7 @@ import com.library_management.dto.response.MemberResponseDto;
 import com.library_management.entity.FineStatus;
 import com.library_management.entity.Member;
 import com.library_management.entity.Role;
+import com.library_management.entity.User;
 import com.library_management.exception.DuplicateResourceException;
 import com.library_management.exception.ResourceNotFoundException;
 import com.library_management.repository.BorrowingReminderRepository;
@@ -18,6 +19,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Optional;
 
 /**
  * Production implementation of MemberService.
@@ -66,10 +69,15 @@ public class MemberServiceImpl implements MemberService {
         String normalizedEmail = request.getEmail().trim().toLowerCase();
         log.info("Registering new member with email: {}", normalizedEmail);
 
-        // 1. Verify email uniqueness
+        // 1. Verify email uniqueness across members and prevent colliding with an ADMIN account
         if (memberRepository.existsByEmail(normalizedEmail)) {
             throw new DuplicateResourceException("Member", "email", normalizedEmail);
         }
+        userRepository.findByEmail(normalizedEmail).ifPresent(existingUser -> {
+            if (existingUser.getRole() == Role.ADMIN) {
+                throw new DuplicateResourceException("User", "email", normalizedEmail);
+            }
+        });
 
         // 2. Map DTO to Member entity
         Member member = Member.builder()
@@ -143,13 +151,24 @@ public class MemberServiceImpl implements MemberService {
         Member existingMember = memberRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Member", "id", id));
 
-        // 2. Verify email uniqueness (excluding current member's ID)
+        String previousEmail = existingMember.getEmail();
         String normalizedEmail = request.getEmail().trim().toLowerCase();
+        boolean emailChanged = !normalizedEmail.equalsIgnoreCase(previousEmail);
+
+        // 2. Verify email uniqueness across members and users (prevent profile hijacking)
         if (memberRepository.existsByEmailAndIdNot(normalizedEmail, id)) {
             throw new DuplicateResourceException("Member", "email", normalizedEmail);
         }
 
-        // 3. Update fields
+        Optional<User> linkedUserOpt = userRepository.findByEmail(previousEmail);
+        if (emailChanged) {
+            Optional<User> conflictingUser = userRepository.findByEmail(normalizedEmail);
+            if (conflictingUser.isPresent()) {
+                throw new DuplicateResourceException("User", "email", normalizedEmail);
+            }
+        }
+
+        // 3. Update Member fields
         existingMember.setFirstName(request.getFirstName().trim());
         existingMember.setLastName(request.getLastName().trim());
         existingMember.setEmail(normalizedEmail);
@@ -163,6 +182,20 @@ public class MemberServiceImpl implements MemberService {
         }
 
         Member updatedMember = memberRepository.save(existingMember);
+
+        // 4. Atomically sync linked non-ADMIN User account (email, name, enabled status)
+        linkedUserOpt.ifPresent(user -> {
+            if (user.getRole() != Role.ADMIN) {
+                user.setEmail(normalizedEmail);
+                user.setName(updatedMember.getFullName());
+                if (request.getActive() != null) {
+                    user.setEnabled(request.getActive());
+                }
+                userRepository.save(user);
+                log.info("Synced linked user id={} with updated member id={}", user.getId(), updatedMember.getId());
+            }
+        });
+
         log.info("Successfully updated member with ID: {}", updatedMember.getId());
         return MemberResponseDto.fromEntity(updatedMember);
     }
@@ -177,7 +210,41 @@ public class MemberServiceImpl implements MemberService {
 
         member.setActive(false);
         Member updatedMember = memberRepository.save(member);
+
+        // Disable linked non-ADMIN user account so active JWTs are rejected immediately
+        userRepository.findByEmail(member.getEmail()).ifPresent(user -> {
+            if (user.getRole() != Role.ADMIN) {
+                user.setEnabled(false);
+                userRepository.save(user);
+                log.info("Disabled linked user account id={} for deactivated member id={}", user.getId(), id);
+            }
+        });
+
         log.info("Successfully deactivated member with ID: {}", id);
+        return MemberResponseDto.fromEntity(updatedMember);
+    }
+
+    @Override
+    @Transactional
+    public MemberResponseDto activateMember(Long id) {
+        log.info("Reactivating member with ID: {}", id);
+
+        Member member = memberRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Member", "id", id));
+
+        member.setActive(true);
+        Member updatedMember = memberRepository.save(member);
+
+        // Re-enable linked non-ADMIN user account
+        userRepository.findByEmail(member.getEmail()).ifPresent(user -> {
+            if (user.getRole() != Role.ADMIN) {
+                user.setEnabled(true);
+                userRepository.save(user);
+                log.info("Re-enabled linked user account id={} for reactivated member id={}", user.getId(), id);
+            }
+        });
+
+        log.info("Successfully reactivated member with ID: {}", id);
         return MemberResponseDto.fromEntity(updatedMember);
     }
 

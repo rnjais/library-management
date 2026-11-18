@@ -2,14 +2,13 @@ import React, { useState, useEffect, useCallback } from 'react'
 import {
   Box,
   Typography,
-  Paper,
+  Card,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
-  TablePagination,
   Button,
   Chip,
   Stack,
@@ -18,39 +17,47 @@ import {
   Skeleton,
   Tabs,
   Tab,
+  Avatar,
+  Pagination,
 } from '@mui/material'
-import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline'
-import AssignmentReturnIcon from '@mui/icons-material/AssignmentReturn'
-import WarningAmberIcon from '@mui/icons-material/WarningAmber'
-import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
+import AssignmentOutlinedIcon from '@mui/icons-material/AssignmentOutlined'
+import AssignmentReturnOutlinedIcon from '@mui/icons-material/AssignmentReturnOutlined'
+import WarningAmberRoundedIcon from '@mui/icons-material/WarningAmberRounded'
+import BookmarkAddOutlinedIcon from '@mui/icons-material/BookmarkAddOutlined'
+import MenuBookIcon from '@mui/icons-material/MenuBook'
 import borrowingService from '../services/borrowingService'
 import { useAuth } from '../hooks/useAuth'
 import BorrowBookDialog from '../components/borrowings/BorrowBookDialog'
 import ReturnBookDialog from '../components/borrowings/ReturnBookDialog'
+import PageHeader from '../components/common/PageHeader'
+import StatusBadge from '../components/common/StatusBadge'
+import EmptyState from '../components/common/EmptyState'
 import { formatDate } from '../utils/formatters'
 
+/**
+ * Modern Borrowings & Circulation UI (Image 3 "spik" Table Style)
+ */
 const BorrowingsPage = () => {
   const { user, isAdmin } = useAuth()
 
-  // State
   const [borrowings, setBorrowings] = useState([])
   const [totalElements, setTotalElements] = useState(0)
+  const [totalPages, setTotalPages] = useState(1)
   const [loading, setLoading] = useState(true)
   const [apiError, setApiError] = useState(null)
   const [feedbackMessage, setFeedbackMessage] = useState(null)
 
-  // Filters & Tabs
-  const [tabIndex, setTabIndex] = useState(0) // 0: All, 1: Overdue (Admin), 2: Active (Member)
+  // 0: All loans, 1: Overdue loans (Admin)
+  const [tabIndex, setTabIndex] = useState(0)
   const [page, setPage] = useState(0)
   const [pageSize, setPageSize] = useState(10)
 
-  // Modals
+  // Dialogs
   const [borrowOpen, setBorrowOpen] = useState(false)
   const [returnOpen, setReturnOpen] = useState(false)
   const [selectedBorrowing, setSelectedBorrowing] = useState(null)
   const [returnLoading, setReturnLoading] = useState(false)
 
-  // Load Borrowings from Backend
   const loadBorrowings = useCallback(async () => {
     setLoading(true)
     setApiError(null)
@@ -60,7 +67,6 @@ const BorrowingsPage = () => {
 
       if (isAdmin) {
         if (tabIndex === 1) {
-          // Overdue loans filter
           pagedData = await borrowingService.getOverdueBorrowings({
             page,
             size: pageSize,
@@ -68,7 +74,6 @@ const BorrowingsPage = () => {
             direction: 'ASC',
           })
         } else {
-          // All loans
           pagedData = await borrowingService.getAllBorrowings({
             page,
             size: pageSize,
@@ -77,8 +82,13 @@ const BorrowingsPage = () => {
           })
         }
       } else {
-        // Member specific loans
-        const memberId = user?.id || 1
+        const memberId = user?.memberId || user?.id
+        if (!memberId) {
+          setBorrowings([])
+          setTotalElements(0)
+          setTotalPages(1)
+          return
+        }
         pagedData = await borrowingService.getBorrowingsByMember(memberId, {
           page,
           size: pageSize,
@@ -89,10 +99,12 @@ const BorrowingsPage = () => {
 
       setBorrowings(pagedData.content || [])
       setTotalElements(pagedData.totalElements || 0)
+      setTotalPages(pagedData.totalPages || 1)
     } catch (err) {
       setApiError(err.message || 'Failed to fetch borrowing records.')
       setBorrowings([])
       setTotalElements(0)
+      setTotalPages(1)
     } finally {
       setLoading(false)
     }
@@ -107,17 +119,6 @@ const BorrowingsPage = () => {
     setPage(0)
   }
 
-  // Pagination Handlers
-  const handleChangePage = (event, newPage) => {
-    setPage(newPage)
-  }
-
-  const handleChangeRowsPerPage = (event) => {
-    setPageSize(parseInt(event.target.value, 10))
-    setPage(0)
-  }
-
-  // Return Handlers
   const handleOpenReturn = (borrowing) => {
     setSelectedBorrowing(borrowing)
     setReturnOpen(true)
@@ -132,243 +133,215 @@ const BorrowingsPage = () => {
       setReturnOpen(false)
       setSelectedBorrowing(null)
       setFeedbackMessage(
-        `Book "${updated.book?.title}" returned successfully.${
-          updated.overdue ? ' Late return fine has been assessed.' : ''
-        }`
+        `Book "${updated.book?.title || 'Book'}" returned successfully.`
       )
       loadBorrowings()
     } catch (err) {
       setApiError(err.message || 'Failed to return book.')
-      setReturnOpen(false)
     } finally {
       setReturnLoading(false)
     }
   }
 
-  const handleBorrowSuccess = (message) => {
-    setFeedbackMessage(message)
-    loadBorrowings()
-  }
-
   return (
     <Box>
-      {/* Header */}
-      <Stack
-        direction={{ xs: 'column', sm: 'row' }}
-        justifyContent="space-between"
-        alignItems={{ xs: 'flex-start', sm: 'center' }}
-        spacing={2}
-        mb={3}
-      >
-        <Box>
-          <Typography variant="h4" component="h1" fontWeight={700} gutterBottom>
-            {isAdmin ? 'Circulation & Borrowings' : 'My Borrowed Books'}
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            {isAdmin
-              ? 'Track library book loans, overdue items, returns, and issue new checkouts.'
-              : 'Review your active book loans, scheduled return due dates, and return history.'}
-          </Typography>
-        </Box>
+      <PageHeader
+        title={isAdmin ? 'Circulation & Loans' : 'My Borrowings'}
+        subtitle={
+          isAdmin
+            ? 'Track active checkouts, overdue schedules, and process returns'
+            : 'View your checked out books and loan return deadlines'
+        }
+        breadcrumbs={[{ label: 'Circulation', path: null }]}
+      />
 
-        {isAdmin && (
-          <Button
-            variant="contained"
-            color="primary"
-            startIcon={<AddCircleOutlineIcon />}
-            onClick={() => setBorrowOpen(true)}
-            sx={{ fontWeight: 600, textTransform: 'none' }}
-          >
-            Check Out Book
-          </Button>
-        )}
-      </Stack>
-
-      {/* Alerts */}
       {feedbackMessage && (
-        <Alert severity="success" onClose={() => setFeedbackMessage(null)} sx={{ mb: 2 }}>
+        <Alert severity="success" sx={{ mb: 3, borderRadius: 2.5 }} onClose={() => setFeedbackMessage(null)}>
           {feedbackMessage}
         </Alert>
       )}
 
       {apiError && (
-        <Alert severity="error" onClose={() => setApiError(null)} sx={{ mb: 2 }}>
+        <Alert severity="error" sx={{ mb: 3, borderRadius: 2.5 }} onClose={() => setApiError(null)}>
           {apiError}
         </Alert>
       )}
 
-      {/* Filter Tabs for Admin */}
-      {isAdmin && (
-        <Paper elevation={1} sx={{ mb: 3, borderRadius: 2 }}>
-          <Tabs
-            value={tabIndex}
-            onChange={handleTabChange}
-            indicatorColor="primary"
-            textColor="primary"
-            sx={{ px: 2 }}
+      {/* Main Card (Image 3 Style) */}
+      <Card sx={{ borderRadius: 4, border: '1px solid #e2e8f0', p: { xs: 2, sm: 3.5 } }}>
+        {/* Toolbar Header */}
+        <Stack
+          direction={{ xs: 'column', sm: 'row' }}
+          justifyContent="space-between"
+          alignItems={{ xs: 'flex-start', sm: 'center' }}
+          spacing={2}
+          mb={3}
+        >
+          {/* Tabs or Title */}
+          {isAdmin ? (
+            <Tabs
+              value={tabIndex}
+              onChange={handleTabChange}
+              sx={{
+                '& .MuiTab-root': {
+                  borderRadius: 2.5,
+                  minHeight: 40,
+                  px: 2,
+                  py: 0.5,
+                  fontWeight: 700,
+                  fontSize: '0.875rem',
+                },
+                '& .Mui-selected': {
+                  bgcolor: '#eff6ff',
+                  color: '#2563eb !important',
+                },
+              }}
+            >
+              <Tab label={`All Loans (${tabIndex === 0 ? totalElements : '•'})`} />
+              <Tab
+                icon={<WarningAmberRoundedIcon sx={{ fontSize: 16 }} />}
+                iconPosition="start"
+                label="Overdue Only"
+              />
+            </Tabs>
+          ) : (
+            <Stack direction="row" alignItems="center" spacing={1.5}>
+              <Typography variant="h6" fontWeight={800} color="#0f172a">
+                My Active &amp; Past Loans
+              </Typography>
+              <Chip
+                label={`${totalElements} records`}
+                size="small"
+                sx={{ fontWeight: 700, bgcolor: '#eff6ff', color: '#2563eb', borderRadius: 2 }}
+              />
+            </Stack>
+          )}
+
+          {/* Action Button (Image 3 style "+ Add" button) */}
+          <Button
+            variant="contained"
+            startIcon={<BookmarkAddOutlinedIcon />}
+            onClick={() => setBorrowOpen(true)}
+            sx={{
+              bgcolor: '#2563eb',
+              color: '#ffffff',
+              fontWeight: 700,
+              borderRadius: 2.5,
+              px: 2.5,
+              py: 0.85,
+              whiteSpace: 'nowrap',
+              boxShadow: '0 4px 12px rgba(37, 99, 235, 0.35)',
+              '&:hover': { bgcolor: '#1d4ed8' },
+            }}
           >
-            <Tab label="All Circulation Records" sx={{ textTransform: 'none', fontWeight: 600 }} />
-            <Tab
-              label="Overdue Loans Only"
-              icon={<WarningAmberIcon fontSize="small" />}
-              iconPosition="end"
-              sx={{ textTransform: 'none', fontWeight: 600 }}
-            />
-          </Tabs>
-        </Paper>
-      )}
+            {isAdmin ? 'Check Out Book' : 'Borrow a Book'}
+          </Button>
+        </Stack>
 
-      {/* Borrowings Table */}
-      <TableContainer component={Paper} elevation={2} sx={{ borderRadius: 2, overflow: 'hidden' }}>
-        <Table aria-label="borrowings circulation table">
-          <TableHead sx={{ bgcolor: 'background.default' }}>
-            <TableRow>
-              <TableCell sx={{ fontWeight: 700 }}>Book Title & Author</TableCell>
-              {isAdmin && <TableCell sx={{ fontWeight: 700 }}>Borrower / Member</TableCell>}
-              <TableCell sx={{ fontWeight: 700 }}>Borrow Date</TableCell>
-              <TableCell sx={{ fontWeight: 700 }}>Due Date</TableCell>
-              <TableCell sx={{ fontWeight: 700 }}>Return Date</TableCell>
-              <TableCell align="center" sx={{ fontWeight: 700 }}>
-                Status
-              </TableCell>
-              <TableCell align="right" sx={{ fontWeight: 700 }}>
-                Action
-              </TableCell>
-            </TableRow>
-          </TableHead>
-
-          <TableBody>
-            {loading ? (
-              // Loading Skeleton Rows
-              Array.from({ length: pageSize }).map((_, idx) => (
-                <TableRow key={idx}>
-                  <TableCell>
-                    <Skeleton variant="text" width="70%" />
-                    <Skeleton variant="text" width="40%" />
-                  </TableCell>
-                  {isAdmin && (
+        {/* Data Table (Image 3 Style) */}
+        <TableContainer sx={{ overflowX: 'auto' }}>
+          <Table>
+            <TableHead>
+              <TableRow>
+                <TableCell>Loan ID</TableCell>
+                <TableCell>Book Title</TableCell>
+                {isAdmin && <TableCell>Patron Member</TableCell>}
+                <TableCell>Borrow Date</TableCell>
+                <TableCell>Due Date</TableCell>
+                <TableCell>Return Date</TableCell>
+                <TableCell align="center">Status</TableCell>
+                <TableCell align="right">Action</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {loading ? (
+                [1, 2, 3, 4, 5].map((i) => (
+                  <TableRow key={i}>
+                    <TableCell><Skeleton width={40} /></TableCell>
+                    <TableCell><Skeleton width={180} height={32} /></TableCell>
+                    {isAdmin && <TableCell><Skeleton width={130} /></TableCell>}
+                    <TableCell><Skeleton width={80} /></TableCell>
+                    <TableCell><Skeleton width={80} /></TableCell>
+                    <TableCell><Skeleton width={80} /></TableCell>
+                    <TableCell align="center"><Skeleton width={70} /></TableCell>
+                    <TableCell align="right"><Skeleton width={90} /></TableCell>
+                  </TableRow>
+                ))
+              ) : borrowings.length > 0 ? (
+                borrowings.map((b) => (
+                  <TableRow key={b.id} hover sx={{ '&:last-child td': { border: 0 } }}>
+                    {/* Loan ID Chip */}
                     <TableCell>
-                      <Skeleton variant="text" width="60%" />
-                      <Skeleton variant="text" width="40%" />
-                    </TableCell>
-                  )}
-                  <TableCell>
-                    <Skeleton variant="text" width={80} />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton variant="text" width={80} />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton variant="text" width={80} />
-                  </TableCell>
-                  <TableCell align="center">
-                    <Skeleton variant="rectangular" width={75} height={24} sx={{ mx: 'auto', borderRadius: 4 }} />
-                  </TableCell>
-                  <TableCell align="right">
-                    <Skeleton variant="rectangular" width={90} height={32} sx={{ ml: 'auto' }} />
-                  </TableCell>
-                </TableRow>
-              ))
-            ) : borrowings.length > 0 ? (
-              borrowings.map((record) => {
-                const isReturned = Boolean(record.returnDate) || record.status === 'RETURNED'
-                const isOverdue = record.overdue || record.status === 'OVERDUE'
-
-                return (
-                  <TableRow key={record.id} hover>
-                    {/* Book */}
-                    <TableCell>
-                      <Typography variant="subtitle2" fontWeight={600} color="primary.main">
-                        {record.book?.title || 'Unknown Title'}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        by {record.book?.author || 'Unknown Author'} (ISBN: {record.book?.isbn})
-                      </Typography>
+                      <Chip
+                        label={`#${b.id}`}
+                        size="small"
+                        sx={{ fontWeight: 700, bgcolor: '#f1f5f9', color: '#475569', borderRadius: 1.5 }}
+                      />
                     </TableCell>
 
-                    {/* Member (Admin View) */}
+                    {/* Book Title with Avatar */}
+                    <TableCell>
+                      <Stack direction="row" alignItems="center" spacing={1.5}>
+                        <Avatar
+                          sx={{
+                            width: 36,
+                            height: 36,
+                            borderRadius: 2,
+                            bgcolor: '#eff6ff',
+                            color: '#2563eb',
+                          }}
+                        >
+                          <MenuBookIcon sx={{ fontSize: 18 }} />
+                        </Avatar>
+                        <Box sx={{ maxWidth: 240 }}>
+                          <Typography variant="body2" sx={{ fontWeight: 700, color: '#0f172a', lineHeight: 1.25 }}>
+                            {b.bookTitle || `Book #${b.bookId}`}
+                          </Typography>
+                          <Typography variant="caption" sx={{ color: '#64748b' }}>
+                            {b.bookAuthor || 'Catalog Title'}
+                          </Typography>
+                        </Box>
+                      </Stack>
+                    </TableCell>
+
+                    {/* Member (If Admin) */}
                     {isAdmin && (
                       <TableCell>
-                        <Typography variant="body2" fontWeight={600}>
-                          {record.member?.fullName || 'Member'}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {record.member?.email}
+                        <Typography variant="body2" sx={{ fontWeight: 600, color: '#334155' }}>
+                          {b.memberName || `Member #${b.memberId}`}
                         </Typography>
                       </TableCell>
                     )}
 
-                    {/* Borrow Date */}
-                    <TableCell>
-                      <Typography variant="body2">{formatDate(record.borrowDate)}</Typography>
+                    <TableCell sx={{ color: '#64748b', fontSize: '0.8125rem' }}>{formatDate(b.borrowDate)}</TableCell>
+                    <TableCell sx={{ color: '#64748b', fontSize: '0.8125rem' }}>{formatDate(b.dueDate)}</TableCell>
+                    <TableCell sx={{ color: '#64748b', fontSize: '0.8125rem' }}>
+                      {b.returnDate ? formatDate(b.returnDate) : '—'}
                     </TableCell>
 
-                    {/* Due Date */}
-                    <TableCell>
-                      <Typography
-                        variant="body2"
-                        fontWeight={isOverdue ? 700 : 400}
-                        color={isOverdue && !isReturned ? 'error.main' : 'text.primary'}
-                      >
-                        {formatDate(record.dueDate)}
-                      </Typography>
-                    </TableCell>
-
-                    {/* Return Date */}
-                    <TableCell>
-                      {record.returnDate ? (
-                        <Typography variant="body2" color="success.main" fontWeight={500}>
-                          {formatDate(record.returnDate)}
-                        </Typography>
-                      ) : (
-                        <Typography variant="caption" color="text.secondary">
-                          Not returned
-                        </Typography>
-                      )}
-                    </TableCell>
-
-                    {/* Status Chip */}
+                    {/* Status Badge */}
                     <TableCell align="center">
-                      {isReturned ? (
-                        <Chip
-                          icon={<CheckCircleOutlineIcon style={{ fontSize: 14 }} />}
-                          label="RETURNED"
-                          size="small"
-                          color="success"
-                          variant="outlined"
-                          sx={{ fontWeight: 600, fontSize: '0.7rem' }}
-                        />
-                      ) : isOverdue ? (
-                        <Chip
-                          icon={<WarningAmberIcon style={{ fontSize: 14 }} />}
-                          label="OVERDUE"
-                          size="small"
-                          color="error"
-                          sx={{ fontWeight: 700, fontSize: '0.7rem' }}
-                        />
-                      ) : (
-                        <Chip
-                          label="BORROWED"
-                          size="small"
-                          color="info"
-                          variant="outlined"
-                          sx={{ fontWeight: 600, fontSize: '0.7rem' }}
-                        />
-                      )}
+                      <StatusBadge status={b.status} />
                     </TableCell>
 
-                    {/* Action */}
+                    {/* Return Action */}
                     <TableCell align="right">
-                      {!isReturned ? (
+                      {!b.returnDate ? (
                         <Button
-                          variant="outlined"
                           size="small"
-                          color="primary"
-                          startIcon={<AssignmentReturnIcon />}
-                          onClick={() => handleOpenReturn(record)}
-                          sx={{ textTransform: 'none', fontWeight: 600 }}
+                          variant="outlined"
+                          startIcon={<AssignmentReturnOutlinedIcon fontSize="small" />}
+                          onClick={() => handleOpenReturn(b)}
+                          sx={{
+                            borderRadius: 2,
+                            fontWeight: 600,
+                            fontSize: '0.75rem',
+                            color: '#2563eb',
+                            borderColor: '#bfdbfe',
+                            '&:hover': { bgcolor: '#eff6ff', borderColor: '#2563eb' },
+                          }}
                         >
-                          Return Book
+                          Return
                         </Button>
                       ) : (
                         <Typography variant="caption" color="text.secondary">
@@ -377,52 +350,67 @@ const BorrowingsPage = () => {
                       )}
                     </TableCell>
                   </TableRow>
-                )
-              })
-            ) : (
-              // Empty State
-              <TableRow>
-                <TableCell colSpan={isAdmin ? 7 : 6} align="center" sx={{ py: 6 }}>
-                  <Typography variant="subtitle1" fontWeight={600} gutterBottom>
-                    No loan records found.
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {tabIndex === 1
-                      ? 'No overdue loans at this time. All circulation records are within their due dates.'
-                      : 'There are no active or past borrowing records recorded.'}
-                  </Typography>
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={isAdmin ? 8 : 7} sx={{ p: 4 }}>
+                    <EmptyState
+                      title="No loan records found"
+                      description={
+                        tabIndex === 1
+                          ? 'Great news! There are currently zero overdue book borrowings.'
+                          : 'No active or historical book checkouts recorded.'
+                      }
+                      actionText={isAdmin ? 'Issue New Loan' : 'Borrow a Book'}
+                      onAction={() => setBorrowOpen(true)}
+                    />
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </TableContainer>
 
-        {/* Pagination */}
-        <TablePagination
-          rowsPerPageOptions={[5, 10, 25, 50]}
-          component="div"
-          count={totalElements}
-          rowsPerPage={pageSize}
-          page={page}
-          onPageChange={handleChangePage}
-          onRowsPerPageChange={handleChangeRowsPerPage}
-        />
-      </TableContainer>
+        {/* Numbered Pill Pagination (Image 3 Style) */}
+        {totalPages > 1 && (
+          <Box sx={{ mt: 3, pt: 2, borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'center' }}>
+            <Pagination
+              count={totalPages}
+              page={page + 1}
+              onChange={(e, p) => setPage(p - 1)}
+              color="primary"
+              shape="rounded"
+              sx={{
+                '& .MuiPaginationItem-root': { borderRadius: 2, fontWeight: 600 },
+                '& .Mui-selected': { bgcolor: '#2563eb !important', color: '#ffffff' },
+              }}
+            />
+          </Box>
+        )}
+      </Card>
 
       {/* Dialogs */}
-      <BorrowBookDialog
-        open={borrowOpen}
-        onClose={() => setBorrowOpen(false)}
-        onBorrowSuccess={handleBorrowSuccess}
-      />
+      {borrowOpen && (
+        <BorrowBookDialog
+          open={borrowOpen}
+          onClose={() => setBorrowOpen(false)}
+          onBorrowSuccess={(msg) => {
+            setFeedbackMessage(msg)
+            setBorrowOpen(false)
+            loadBorrowings()
+          }}
+        />
+      )}
 
-      <ReturnBookDialog
-        open={returnOpen}
-        onClose={() => setReturnOpen(false)}
-        borrowing={selectedBorrowing}
-        onConfirm={handleConfirmReturn}
-        loading={returnLoading}
-      />
+      {returnOpen && (
+        <ReturnBookDialog
+          open={returnOpen}
+          onClose={() => setReturnOpen(false)}
+          onConfirmReturn={handleConfirmReturn}
+          borrowing={selectedBorrowing}
+          loading={returnLoading}
+        />
+      )}
     </Box>
   )
 }

@@ -1,20 +1,24 @@
 package com.library_management.service.impl;
 
+import com.library_management.config.BorrowingProperties;
 import com.library_management.dto.request.BorrowingRequestDto;
 import com.library_management.dto.response.BorrowingResponseDto;
 import com.library_management.entity.Book;
 import com.library_management.entity.Borrowing;
 import com.library_management.entity.BorrowingStatus;
+import com.library_management.entity.FineStatus;
 import com.library_management.entity.Member;
 import com.library_management.exception.*;
 import com.library_management.repository.BookRepository;
 import com.library_management.repository.BorrowingRepository;
+import com.library_management.repository.FineRepository;
 import com.library_management.repository.MemberRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDate;
@@ -37,7 +41,13 @@ class BorrowingServiceImplTest {
     private MemberRepository memberRepository;
 
     @Mock
+    private FineRepository fineRepository;
+
+    @Mock
     private com.library_management.service.FineService fineService;
+
+    @Spy
+    private BorrowingProperties borrowingProperties = new BorrowingProperties();
 
     @Mock
     private org.springframework.context.ApplicationEventPublisher eventPublisher;
@@ -178,7 +188,7 @@ class BorrowingServiceImplTest {
 
     @Test
     void shouldReturnBookSuccessfully() {
-        when(borrowingRepository.findById(100L)).thenReturn(Optional.of(sampleBorrowing));
+        when(borrowingRepository.findByIdWithPessimisticLock(100L)).thenReturn(Optional.of(sampleBorrowing));
         when(bookRepository.findByIdWithPessimisticLock(1L)).thenReturn(Optional.of(sampleBook));
         when(borrowingRepository.save(any(Borrowing.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -198,7 +208,7 @@ class BorrowingServiceImplTest {
         sampleBorrowing.setReturnDate(LocalDate.now());
         sampleBorrowing.setStatus(BorrowingStatus.RETURNED);
 
-        when(borrowingRepository.findById(100L)).thenReturn(Optional.of(sampleBorrowing));
+        when(borrowingRepository.findByIdWithPessimisticLock(100L)).thenReturn(Optional.of(sampleBorrowing));
 
         assertThrows(BookAlreadyReturnedException.class, () -> borrowingService.returnBook(100L));
         verify(bookRepository, never()).save(any(Book.class));
@@ -206,9 +216,63 @@ class BorrowingServiceImplTest {
 
     @Test
     void shouldRejectReturnWhenBorrowingNotFound() {
-        when(borrowingRepository.findById(999L)).thenReturn(Optional.empty());
+        when(borrowingRepository.findByIdWithPessimisticLock(999L)).thenReturn(Optional.empty());
 
         assertThrows(ResourceNotFoundException.class, () -> borrowingService.returnBook(999L));
         verify(bookRepository, never()).save(any(Book.class));
+    }
+
+    @Test
+    void shouldRejectBorrowWhenMaxActiveLoansLimitReached() {
+        BorrowingRequestDto request = BorrowingRequestDto.builder()
+                .bookId(1L)
+                .memberId(10L)
+                .borrowDays(14)
+                .build();
+
+        when(bookRepository.findByIdWithPessimisticLock(1L)).thenReturn(Optional.of(sampleBook));
+        when(memberRepository.findById(10L)).thenReturn(Optional.of(sampleMember));
+        when(borrowingRepository.countByMemberIdAndReturnDateIsNull(10L)).thenReturn(5L);
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> borrowingService.borrowBook(request));
+        assertTrue(ex.getMessage().contains("Borrowing limit reached"));
+        verify(borrowingRepository, never()).save(any(Borrowing.class));
+    }
+
+    @Test
+    void shouldRejectBorrowWhenMemberHasUnpaidFines() {
+        BorrowingRequestDto request = BorrowingRequestDto.builder()
+                .bookId(1L)
+                .memberId(10L)
+                .borrowDays(14)
+                .build();
+
+        when(bookRepository.findByIdWithPessimisticLock(1L)).thenReturn(Optional.of(sampleBook));
+        when(memberRepository.findById(10L)).thenReturn(Optional.of(sampleMember));
+        when(borrowingRepository.countByMemberIdAndReturnDateIsNull(10L)).thenReturn(1L);
+        when(fineRepository.countByMemberIdAndStatus(10L, FineStatus.UNPAID)).thenReturn(2L);
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> borrowingService.borrowBook(request));
+        assertTrue(ex.getMessage().contains("unpaid fine"));
+        verify(borrowingRepository, never()).save(any(Borrowing.class));
+    }
+
+    @Test
+    void shouldRejectBorrowWhenDueDateExceedsMaximumAllowedDays() {
+        BorrowingRequestDto request = BorrowingRequestDto.builder()
+                .bookId(1L)
+                .memberId(10L)
+                .dueDate(LocalDate.now().plusDays(120))
+                .build();
+
+        when(bookRepository.findByIdWithPessimisticLock(1L)).thenReturn(Optional.of(sampleBook));
+        when(memberRepository.findById(10L)).thenReturn(Optional.of(sampleMember));
+        when(borrowingRepository.countByMemberIdAndReturnDateIsNull(10L)).thenReturn(0L);
+        when(fineRepository.countByMemberIdAndStatus(10L, FineStatus.UNPAID)).thenReturn(0L);
+        when(borrowingRepository.existsByMemberIdAndBookIdAndReturnDateIsNull(10L, 1L)).thenReturn(false);
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> borrowingService.borrowBook(request));
+        assertTrue(ex.getMessage().contains("cannot exceed 90 days"));
+        verify(borrowingRepository, never()).save(any(Borrowing.class));
     }
 }

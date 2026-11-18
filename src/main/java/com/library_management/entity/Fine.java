@@ -64,6 +64,15 @@ public class Fine {
     @Column(name = "paid_at")
     private LocalDateTime paidAt;
 
+    @Column(name = "payment_method", length = 50)
+    private String paymentMethod;
+
+    @Column(name = "transaction_reference", length = 100)
+    private String transactionReference;
+
+    @Column(name = "payment_notes", length = 255)
+    private String paymentNotes;
+
     /**
      * Entity lifecycle callback executed prior to persistence.
      * Sets automatic defaults if not provided.
@@ -96,8 +105,18 @@ public class Fine {
      * Convenience domain method to transition the fine to PAID status.
      */
     public void markAsPaid() {
+        markAsPaid(null, null, null);
+    }
+
+    /**
+     * Transitions the fine to PAID status while recording payment audit metadata.
+     */
+    public void markAsPaid(String paymentMethod, String transactionReference, String paymentNotes) {
         this.status = FineStatus.PAID;
         this.paidAt = LocalDateTime.now();
+        this.paymentMethod = paymentMethod;
+        this.transactionReference = transactionReference;
+        this.paymentNotes = paymentNotes;
     }
 
     @Override

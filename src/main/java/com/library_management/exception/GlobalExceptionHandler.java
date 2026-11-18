@@ -5,13 +5,23 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.InvalidDataAccessApiUsageException;
+import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.dao.PessimisticLockingFailureException;
+import org.springframework.data.core.PropertyReferenceException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.HashMap;
@@ -169,6 +179,109 @@ public class GlobalExceptionHandler {
             HttpServletRequest request) {
         log.warn("Constraint violation at [{}]: {}", request.getRequestURI(), ex.getMessage());
         return buildErrorResponse(HttpStatus.BAD_REQUEST, ex.getMessage(), request.getRequestURI());
+    }
+
+    /**
+     * Handles Spring Framework method-level parameter validation failures (HTTP 400).
+     */
+    @ExceptionHandler(HandlerMethodValidationException.class)
+    public ResponseEntity<ErrorResponse> handleHandlerMethodValidationException(
+            HandlerMethodValidationException ex,
+            HttpServletRequest request) {
+        log.warn("Method parameter validation failed at [{}]: {}", request.getRequestURI(), ex.getMessage());
+        return buildErrorResponse(HttpStatus.BAD_REQUEST, "Validation failed for request parameters.", request.getRequestURI());
+    }
+
+    /**
+     * Handles malformed JSON payloads, invalid date/enum strings, or unreadable request bodies (HTTP 400).
+     */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ErrorResponse> handleHttpMessageNotReadableException(
+            HttpMessageNotReadableException ex,
+            HttpServletRequest request) {
+        log.warn("Unreadable HTTP message at [{}]: {}", request.getRequestURI(), ex.getMessage());
+        return buildErrorResponse(
+                HttpStatus.BAD_REQUEST,
+                "Malformed JSON request or invalid field format. Please verify your request payload.",
+                request.getRequestURI()
+        );
+    }
+
+    /**
+     * Handles path/query parameter type conversion errors (e.g. non-numeric IDs or invalid enum/date params) (HTTP 400).
+     */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ErrorResponse> handleMethodArgumentTypeMismatchException(
+            MethodArgumentTypeMismatchException ex,
+            HttpServletRequest request) {
+        String message = String.format("Invalid value '%s' for parameter '%s'.", ex.getValue(), ex.getName());
+        log.warn("Type mismatch at [{}]: {}", request.getRequestURI(), message);
+        return buildErrorResponse(HttpStatus.BAD_REQUEST, message, request.getRequestURI());
+    }
+
+    /**
+     * Handles missing required query parameters (HTTP 400).
+     */
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ErrorResponse> handleMissingServletRequestParameterException(
+            MissingServletRequestParameterException ex,
+            HttpServletRequest request) {
+        String message = String.format("Required query parameter '%s' is missing.", ex.getParameterName());
+        log.warn("Missing parameter at [{}]: {}", request.getRequestURI(), message);
+        return buildErrorResponse(HttpStatus.BAD_REQUEST, message, request.getRequestURI());
+    }
+
+    /**
+     * Handles invalid Spring Data sort/property references (HTTP 400).
+     */
+    @ExceptionHandler({PropertyReferenceException.class, InvalidDataAccessApiUsageException.class})
+    public ResponseEntity<ErrorResponse> handleInvalidQueryPropertyException(
+            RuntimeException ex,
+            HttpServletRequest request) {
+        log.warn("Invalid query/sort property at [{}]: {}", request.getRequestURI(), ex.getMessage());
+        return buildErrorResponse(HttpStatus.BAD_REQUEST, "Invalid query or sort parameter provided.", request.getRequestURI());
+    }
+
+    /**
+     * Handles unsupported HTTP methods (HTTP 405).
+     */
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ErrorResponse> handleMethodNotSupportedException(
+            HttpRequestMethodNotSupportedException ex,
+            HttpServletRequest request) {
+        String message = String.format("HTTP method '%s' is not supported for this endpoint.", ex.getMethod());
+        log.warn("Method not allowed at [{}]: {}", request.getRequestURI(), message);
+        return buildErrorResponse(HttpStatus.METHOD_NOT_ALLOWED, message, request.getRequestURI());
+    }
+
+    /**
+     * Handles unsupported Content-Type headers (HTTP 415).
+     */
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    public ResponseEntity<ErrorResponse> handleMediaTypeNotSupportedException(
+            HttpMediaTypeNotSupportedException ex,
+            HttpServletRequest request) {
+        log.warn("Unsupported media type at [{}]: {}", request.getRequestURI(), ex.getContentType());
+        return buildErrorResponse(
+                HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+                "Unsupported Content-Type. Please send requests as 'application/json'.",
+                request.getRequestURI()
+        );
+    }
+
+    /**
+     * Handles optimistic and pessimistic database locking conflicts (HTTP 409).
+     */
+    @ExceptionHandler({OptimisticLockingFailureException.class, PessimisticLockingFailureException.class})
+    public ResponseEntity<ErrorResponse> handleLockingFailureException(
+            RuntimeException ex,
+            HttpServletRequest request) {
+        log.warn("Concurrency lock conflict at [{}]: {}", request.getRequestURI(), ex.getMessage());
+        return buildErrorResponse(
+                HttpStatus.CONFLICT,
+                "The resource is currently being modified by another request. Please retry.",
+                request.getRequestURI()
+        );
     }
 
     /**

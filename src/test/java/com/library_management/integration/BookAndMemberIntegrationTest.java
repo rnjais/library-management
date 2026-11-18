@@ -1,8 +1,11 @@
 package com.library_management.integration;
 
 import com.library_management.entity.Book;
+import com.library_management.entity.Borrowing;
+import com.library_management.entity.BorrowingStatus;
 import com.library_management.entity.Member;
 import com.library_management.repository.BookRepository;
+import com.library_management.repository.BorrowingRepository;
 import com.library_management.repository.MemberRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -14,6 +17,8 @@ import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDate;
 
 import static org.hamcrest.Matchers.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -36,6 +41,9 @@ class BookAndMemberIntegrationTest {
 
     @Autowired
     private MemberRepository memberRepository;
+
+    @Autowired
+    private BorrowingRepository borrowingRepository;
 
     private Book existingBook;
     private Member existingMember;
@@ -165,13 +173,35 @@ class BookAndMemberIntegrationTest {
     @WithMockUser(roles = "ADMIN")
     @DisplayName("Integration: DELETE /api/books/{id} when copies are borrowed out returns 409 Conflict")
     void testDeleteBook_WithActiveBorrowing_Returns409() throws Exception {
-        // Simulate a book with 1 active loan (availableCopies < totalCopies)
-        existingBook.setAvailableCopies(3); // 1 copy borrowed out
-        bookRepository.save(existingBook);
+        borrowingRepository.save(Borrowing.builder()
+                .book(existingBook)
+                .member(existingMember)
+                .borrowDate(LocalDate.now().minusDays(2))
+                .dueDate(LocalDate.now().plusDays(12))
+                .status(BorrowingStatus.BORROWED)
+                .build());
 
         mockMvc.perform(delete("/api/books/" + existingBook.getId()))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.status").value(409))
                 .andExpect(jsonPath("$.message", containsString("currently borrowed out")));
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    @DisplayName("Integration: DELETE /api/books/{id} with historical returned borrowings succeeds with 200 OK")
+    void testDeleteBook_WithReturnedBorrowingHistory_Returns200() throws Exception {
+        borrowingRepository.save(Borrowing.builder()
+                .book(existingBook)
+                .member(existingMember)
+                .borrowDate(LocalDate.now().minusDays(20))
+                .dueDate(LocalDate.now().minusDays(6))
+                .returnDate(LocalDate.now().minusDays(8))
+                .status(BorrowingStatus.RETURNED)
+                .build());
+
+        mockMvc.perform(delete("/api/books/" + existingBook.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
     }
 }

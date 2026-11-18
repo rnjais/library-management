@@ -32,13 +32,19 @@ api.interceptors.response.use(
     let message = 'An unexpected error occurred. Please try again.'
 
     if (response) {
-      // Backend ErrorResponse schema
-      if (response.data && response.data.message) {
-        message = response.data.message
-      } else if (response.status === 401) {
-        message = 'Session expired or invalid credentials. Please log in again.'
+      const requestUrl = error.config?.url || ''
+      const isAuthEndpoint = requestUrl.includes('/auth/login') || requestUrl.includes('/auth/register')
+
+      if (response.status === 401 && !isAuthEndpoint) {
         localStorage.removeItem(STORAGE_KEYS.TOKEN)
         localStorage.removeItem(STORAGE_KEYS.USER)
+        window.dispatchEvent(new Event('auth:unauthorized'))
+        message = 'Session expired. Please log in again.'
+      } else if (response.data && response.data.message) {
+        // Backend ErrorResponse schema
+        message = response.data.message
+      } else if (response.status === 401) {
+        message = 'Invalid email or password.'
       } else if (response.status === 403) {
         message = 'Access denied. You do not have permission for this action.'
       } else if (response.status === 404) {

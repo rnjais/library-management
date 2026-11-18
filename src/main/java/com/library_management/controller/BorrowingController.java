@@ -5,6 +5,7 @@ import com.library_management.dto.response.ApiResponse;
 import com.library_management.dto.response.BorrowingResponseDto;
 import com.library_management.dto.response.PagedResponse;
 import com.library_management.service.BorrowingService;
+import com.library_management.util.PaginationUtils;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -221,15 +222,8 @@ public class BorrowingController {
      * Helper method to validate pagination parameters and construct a Pageable instance.
      */
     private Pageable buildPageable(int page, int size, String sortBy, String direction) {
-        if (page < 0) {
-            throw new IllegalArgumentException("Page index cannot be negative");
-        }
-        if (size <= 0 || size > 100) {
-            throw new IllegalArgumentException("Page size must be between 1 and 100");
-        }
-        Sort.Direction sortDirection = direction != null && direction.equalsIgnoreCase("DESC")
-                ? Sort.Direction.DESC
-                : Sort.Direction.ASC;
-        return PageRequest.of(page, size, Sort.by(sortDirection, sortBy));
+        return PaginationUtils.buildPageable(
+                page, size, sortBy, direction, PaginationUtils.BORROWING_SORT_FIELDS, Sort.Direction.ASC
+        );
     }
 }

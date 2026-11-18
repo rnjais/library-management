@@ -5,6 +5,7 @@ import com.library_management.dto.response.ApiResponse;
 import com.library_management.dto.response.BookResponse;
 import com.library_management.dto.response.PagedResponse;
 import com.library_management.service.BookService;
+import com.library_management.util.PaginationUtils;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -82,18 +83,9 @@ public class BookController {
             @Parameter(description = "Optional filter by title substring") @RequestParam(value = "title", required = false) String title,
             @Parameter(description = "Optional filter by category") @RequestParam(value = "category", required = false) String category) {
 
-        // Validate pagination constraints
-        if (page < 0) {
-            throw new IllegalArgumentException("Page index cannot be negative");
-        }
-        if (size <= 0 || size > 100) {
-            throw new IllegalArgumentException("Page size must be between 1 and 100");
-        }
-
-        // Build Sort and Pageable
-        Sort.Direction sortDirection = direction.equalsIgnoreCase("DESC") ? Sort.Direction.DESC : Sort.Direction.ASC;
-        Sort sort = Sort.by(sortDirection, sortBy);
-        Pageable pageable = PageRequest.of(page, size, sort);
+        Pageable pageable = PaginationUtils.buildPageable(
+                page, size, sortBy, direction, PaginationUtils.BOOK_SORT_FIELDS, Sort.Direction.ASC
+        );
 
         Page<BookResponse> booksPage = bookService.getAllBooks(title, category, pageable);
         return ResponseEntity.ok(
